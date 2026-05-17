@@ -84,20 +84,34 @@ Para entender TuxTimes, hay que entender a su némesis: **LWN.net**.
 - No hay dark mode (el crimine supremo)
 - Los comentarios tienen IDs numéricos de 7 cifras como en el año del señor
 
-### 🤔 ¿LWN es malo entonces?
+### 🤔 ¿Entonces cuál era el problema real?
 
-**NO.** LWN es genuinamente excelente. Jonathan Corbet y compañía hacen un trabajo periodístico sobre el mundo Linux que es irreemplazable. Merecen ser pagados. El contenido justifica la suscripción.
+No era el contenido. Era **todo lo demás.**
 
-El problema es que en el año 2024+, una plataforma que:
+**1. 💸 El conocimiento no debería tener paywall**
 
-- No tiene modo oscuro
-- Requiere suscripción para leer artículos de la semana
-- Tiene la UX de una página PHP de 2001
-- No es fácilmente navegable sin bookmarks manuales
+LWN cobra suscripción para leer artículos recientes. El problema filosófico no es que cobren — es que el conocimiento técnico sobre software *libre* quede encerrado detrás de un muro de pago. El kernel Linux es GPL. Los artículos que lo explican... no tanto. Hay algo irónico en eso que no se puede ignorar.
 
-...genera en ciertos desarrolladores una reacción alérgica que solo puede resolverse con **código**, **café**, y **una licencia GPLv2 por pura coherencia ideológica**.
+**2. 🔒 No cualquiera puede publicar**
 
-TuxTimes es esa reacción alérgica. Y es gloriosa.
+LWN es un medio cerrado. Solo sus editores escriben. No hay comunidad que aporte, no hay forma de compartir tu descubrimiento sobre un bug raro del kernel, no hay espacio para el conocimiento colectivo. Es un canal de bajada, no una plaza.
+
+**3. 🗞️ La interfaz parece un periódico de 1994**
+
+Y no en el sentido nostálgico bonito. En el sentido de que literalmente parece que nadie tocó el CSS desde que Clinton era presidente. Sin dark mode. Sin diseño responsivo decente. Tipografía de sistema. Densidad de información al estilo "muro de texto sin respiro". Funciona, sí. ¿Pero tiene que doler usarlo?
+
+**4. 🗂️ La organización deja que desear**
+
+Encontrar algo específico en LWN es una aventura. El sistema de categorías es básico, la búsqueda es limitada, y navegar por temas sin saber exactamente qué buscas es frustrante. No hay tags, no hay filtros modernos, no hay forma fácil de descubrir contenido relacionado.
+
+---
+
+**TuxTimes nació para ser lo opuesto:**
+- 🆓 Gratis. Siempre.
+- ✍️ Cualquiera con cuenta puede publicar
+- 🌙 Dark mode desde el día uno (obviamente)
+- 🔍 Búsqueda con tags, categorías, texto libre — todo a la vez
+- 🐧 Y con un pingüino que bouncea en la esquina porque podemos
 
 ---
 
