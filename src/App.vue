@@ -1,138 +1,337 @@
 <script setup>
-// ══════════════════════════════════════════════════════════════════
-//  IMPORTS
-// ══════════════════════════════════════════════════════════════════
+// ╔══════════════════════════════════════════════════════════════════╗
+// ║                    TuxTimes — App.vue                           ║
+// ║  El único archivo JS que importa en este proyecto.              ║
+// ║  Si esto falla, todo falla. Trata con respeto.                  ║
+// ╚══════════════════════════════════════════════════════════════════╝
+// y si todo o casi todo en un archivo, y GPLV2 ¿POR QUE? 
+// por que estaba enojado con paginas con paywalls arcaicos(te hablo a ti -> lwn.net <-)
+// ─────────────────────────────────────────────────────────────────
+//  IMPORTS — sí, necesitamos TODOS. No, no puedes borrar ninguno.
+//  (alguien ya lo intentó. no diré nombres. fui yo.)
+// ─────────────────────────────────────────────────────────────────
 import { ref, onMounted, computed, nextTick, watch } from 'vue';
-import { marked } from 'marked';
-import { auth, provider, db } from './firebase';
+import { marked } from 'marked';          // convierte Markdown en HTML. Magia negra controlada.
+import { auth, provider, db } from './firebase'; // el santísimo trinity de Firebase
+
+// Auth: porque confiar en el usuario sería un error histórico
 import {
-  signInWithPopup, onAuthStateChanged,
-  createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signInWithRedirect, getRedirectResult,   // redirect: porque los popups son un desastre con COOP
+  onAuthStateChanged,                       // el vigilante silencioso que nunca duerme
+  createUserWithEmailAndPassword,           // función con nombre más largo que la mayoría de contraseñas
+  signInWithEmailAndPassword,
   updateProfile
 } from 'firebase/auth';
+
+// Firestore: la base de datos que cobra por cada query que hagas
+// (así que no hagas queries en bucles, por favor. ya lo hiciste. ya lo sabes.)
 import {
   collection, addDoc, getDocs, getDoc, doc, query, orderBy,
   serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc
 } from 'firebase/firestore';
 
-// importando componente de Comentarios!
+// El componente de comentarios recursivo.
+// Sí, se llama a sí mismo. Sí, eso da miedo. No, no está roto (ahora).
 import CommentNode from './components/CommentNode.vue';
 
 // ══════════════════════════════════════════════════════════════════
-//  NAVEGACIÓN — pila de estados
+//  NAVEGACIÓN — pila de estados (como el historial del navegador,
+//  pero uno que sí controlamos. qué lujo.)
 // ══════════════════════════════════════════════════════════════════
+// navStack es un array donde cada elemento = una "pantalla" apilada.
+// index 0 = feed (la base). Todo lo demás son overlays encima.
+// Si alguna vez tiene más de 10 elementos, el usuario está perdido.
+// Y tú también. Buena suerte.
 const navStack    = ref([{ type: 'feed' }]);
-const currentNav  = computed(() => navStack.value[navStack.value.length - 1]);
-const pushNav     = (e) => navStack.value.push(e);
-const popNav      = () => { if (navStack.value.length > 1) navStack.value.pop(); };
-const resetNav    = () => { navStack.value = [{ type: 'feed' }]; };
-const showOverlay = computed(() => navStack.value.length > 1 && view.value === 'feed');
+const currentNav  = computed(() => navStack.value[navStack.value.length - 1]); // el tope de la pila. capitán obvio.
+const pushNav     = (e) => navStack.value.push(e);           // abrir algo encima
+const popNav      = () => { if (navStack.value.length > 1) navStack.value.pop(); }; // volver. como en la vida real.
+const resetNav    = () => { navStack.value = [{ type: 'feed' }]; };               // PANIC BUTTON — todo al inicio
+const showOverlay = computed(() => navStack.value.length > 1 && view.value === 'feed'); // ¿hay algo encima del feed?
 
-// Vista activa
-const view = ref('feed'); // 'feed'|'new-post'|'settings'|'favorites'|'myposts'
-watch(view, (v) => { if (v !== 'feed') resetNav(); });
+// Vista principal activa. Solo una a la vez, como Dios manda.
+// (los tabs también son vistas. tabs = pestañas del sidebar, no las del navegador.
+//  sé que es confuso. vivimos en tiempos oscuros.)
+const view = ref('feed'); // 'feed' | 'new-post' | 'settings' | 'favorites' | 'myposts'
+
+// ── URL HASH ROUTING ─────────────────────────────────────────────
+// Porque en el año de gracia 2024 seguimos usando el fragmento de la URL
+// como sistema de rutas. React Router llorando en un rincón.
+// Ventaja: sin SSR, sin 404s, sin drama. Solo un # y listo.
+//
+// TABLA DE HASHES SOPORTADOS:
+//   #reciente / #feed         → feed principal
+//   #configuracion / #config  → ajustes de cuenta
+//   #favoritos                → posts con estrella
+//   #mistuxpost / #misposts   → posts del usuario
+//   #nuevopost / #newpost     → editor
+//   #signin                   → abre el modal de login
+//   #post-{ID}                → abre ese post directamente
+//   #cualquier-otra-cosa      → filtra por ese tag en el feed
+const HASH_VIEWS = {
+  '#reciente':      'feed',
+  '#feed':          'feed',
+  '#configuracion': 'settings',
+  '#config':        'settings',
+  '#favoritos':     'favorites',
+  '#mistuxpost':    'myposts',
+  '#misposts':      'myposts',
+  '#nuevopost':     'new-post',
+  '#newpost':       'new-post',
+  '#signin':        'signin',  // especial: solo abre modal, no cambia vista
+};
+
+// Aplica el hash actual a la navegación.
+// Se llama al montar y cada vez que el hash cambia (botón atrás/adelante).
+// Si el hash no existe en la tabla, asume que es un filtro de tag.
+// Si ni eso funciona, nos quedamos donde estamos. #yolo
+const applyHash = (hash) => {
+  if (!hash || hash === '#') { view.value = 'feed'; resetNav(); return; }
+  const lower = hash.toLowerCase();
+
+  // ¿Es una vista conocida? La aplicamos.
+  if (HASH_VIEWS[lower] !== undefined) {
+    const target = HASH_VIEWS[lower];
+    if (target === 'signin') { showAuthModal.value = true; return; } // solo abre el modal
+    resetNav();
+    view.value = target;
+    return;
+  }
+
+  // ¿Es un post específico? Lo abrimos si existe en el array local.
+  // (si no está cargado aún, mala suerte. vuelve a intentarlo en 3 segundos.)
+  if (lower.startsWith('#post-')) {
+    const id = hash.slice(6);
+    const p = posts.value.find(x => x.id === id);
+    if (p) { resetNav(); view.value = 'feed'; pushNav({ type: 'post', data: { ...p } }); return; }
+  }
+
+  // ¿Es un tag random? Filtra el feed con él.
+  // Ejemplo: #linux → busca posts con el tag "linux"
+  const tag = hash.slice(1);
+  if (tag) {
+    resetNav();
+    view.value = 'feed';
+    searchQuery.value = '#' + tag;
+  }
+};
+
+// Sincroniza el hash de la URL cuando el usuario navega con el sidebar.
+// Usamos replaceState (no pushState) para no llenar el historial de basura.
+// Si tu manager pregunta "¿por qué el botón atrás no funciona?", muéstrale esto.
+const syncHashFromView = () => {
+  const map = {
+    'feed':      '#reciente',
+    'new-post':  '#nuevopost',
+    'settings':  '#configuracion',
+    'favorites': '#favoritos',
+    'myposts':   '#mistuxpost',
+  };
+  const h = map[view.value] || '#reciente';
+  if (window.location.hash !== h) history.replaceState(null, '', h);
+};
+
+// Watcher de vista → actualiza hash. Orden: resetNav primero, hash después.
+// (no al revés. lo aprendimos a las malas.)
+watch(view, (v) => {
+  if (v !== 'feed') resetNav();
+  syncHashFromView();
+});
+
+// ── BORRADOR PERSISTENTE DEL EDITOR ──────────────────────────────
+// Para el usuario despistado que cierra la pestaña sin querer.
+// (todos lo hemos hecho. todos lo negaremos.)
+//
+// Funciona así:
+//   - Al escribir en el editor → guarda en localStorage automáticamente
+//   - Al abrir el editor (post nuevo) → restaura lo guardado
+//   - Al publicar → borra el borrador (¡misión cumplida!)
+//   - Al cancelar → NO borra (por si el usuario se arrepiente de cancelar)
+//
+// IMPORTANTE: Solo aplica para posts NUEVOS.
+// Editar un post existente NO usa el borrador. Eso sería un desastre.
+const DRAFT_KEY = 'tuxtimes_draft'; // la llave sagrada del localStorage
+
+// Carga el borrador guardado. Retorna null si no hay nada o si el JSON
+// está corrupto (localStorage es el far west del almacenamiento web).
+const loadDraft = () => {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); }
+  catch { return null; } // JSON.parse falló. alguien metió la mano en el localStorage.
+};
+
+// Guarda el borrador actual. Solo funciona si NO estamos editando un post.
+// (editar un post ya existente y sobrescribir el borrador sería un crimen.)
+const saveDraft = () => {
+  if (!editingPost.value) {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      title:            title.value,
+      content:          content.value,
+      selectedCategory: selectedCategory.value,
+      selectedTags:     selectedTags.value,
+    }));
+  }
+};
+
+// Limpia el borrador. Se usa al publicar exitosamente.
+// (si publicaste, ya no necesitas el borrador. suéltalo. déjalo ir.)
+const clearDraft = () => localStorage.removeItem(DRAFT_KEY);
 
 // ══════════════════════════════════════════════════════════════════
-//  AUTH (Corregido e inmune a bloqueos COOP)
+//  AUTH — Corregido e inmune a bloqueos COOP
+//  (COOP = Cross-Origin-Opener-Policy. el navegador siendo el navegador.)
+//  Usamos signInWithRedirect en vez de Popup porque los popups se
+//  bloquean en entornos con COOP estricto. Pregúntale a Chrome.
 // ══════════════════════════════════════════════════════════════════
-import { signInWithRedirect, getRedirectResult } from 'firebase/auth'; // 👈 Asegúrate de añadir estos dos a tus imports de firebase/auth arriba
 
+// Estado de autenticación. null = no logueado. objeto = persona real (o bot. sabrá Dios).
 const user          = ref(null);
 const showAuthModal = ref(false);
-const authMode      = ref('login');
+const authMode      = ref('login');    // 'login' | 'register'. dos modos, cero más.
 const authEmail     = ref('');
 const authPassword  = ref('');
-const authName      = ref('');
-const authError     = ref('');
-const authLoading   = ref(false);
+const authName      = ref('');         // solo en registro. obvio.
+const authError     = ref('');         // el mensaje de vergüenza cuando algo sale mal
+const authLoading   = ref(false);      // spinner de "por favor espera, Firebase está pensando"
 
+// ─────────────────────────────────────────────────────────────────
+//  onMounted — el gran maestro de ceremonias del arranque
+//  Se ejecuta UNA SOLA VEZ al montar el componente.
+//  Si lo llamas dos veces es tu culpa, no nuestra.
+// ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  // 1. Capturar el resultado del login por redirección si venimos volviendo de Google
+  // PASO 1: ¿Venimos de vuelta de un redirect de Google?
+  // Cuando el usuario hace login con Google, la página se recarga desde cero.
+  // getRedirectResult atrapa el resultado de ese viaje de ida y vuelta.
+  // Si no hay resultado, retorna null y seguimos tranquilos.
   try {
     const result = await getRedirectResult(auth);
     if (result?.user) {
       user.value = result.user;
-      showAuthModal.value = false;
+      showAuthModal.value = false; // cerramos el modal si estaba abierto
     }
   } catch (error) {
     console.error("Error al procesar el retorno de Google:", error);
     authError.value = 'Error al procesar el inicio de sesión 🐧';
   }
 
-  // 2. Escuchar de forma segura los cambios de estado del usuario
-  onAuthStateChanged(auth, u => { 
-    user.value = u; 
-    fetchPosts(); 
+  // PASO 2: Escuchar cambios de autenticación EN TIEMPO REAL.
+  // onAuthStateChanged dispara inmediatamente con el estado actual,
+  // y luego cada vez que el usuario entra o sale.
+  // Aprovechamos esa primera llamada para cargar los posts Y aplicar el hash de la URL.
+  // (orden importa: primero posts, luego hash. #post-ID necesita los posts cargados.)
+  onAuthStateChanged(auth, u => {
+    user.value = u;
+    fetchPosts().then(() => {
+      // Aplicar hash DESPUÉS de que los posts estén en memoria
+      // para que #post-{ID} encuentre el post y lo abra correctamente.
+      applyHash(window.location.hash);
+    });
   });
 
-  // Listener para cerrar modales con Escape
+  // PASO 3: Escuchar el botón "atrás" / "adelante" del navegador.
+  // hashchange dispara cuando el hash de la URL cambia por navegación del browser.
+  // (pushState no lo dispara. la API de historial es un desastre de diseño. gracias, HTML5.)
+  window.addEventListener('hashchange', () => applyHash(window.location.hash));
+
+  // PASO 4: Cerrar modales con Escape.
+  // Prioridad de cierre: DeleteModal → WindowsEgg → AuthModal → overlay de post/autor.
+  // (si tienes todos abiertos a la vez, felicitaciones. has encontrado un estado imposible.)
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (showDeleteModal.value) { showDeleteModal.value = false; return; }
-      if (showWindowsEgg.value) { showWindowsEgg.value = false; return; }
-      if (showAuthModal.value)  { showAuthModal.value  = false; return; }
-      popNav();
+      if (showWindowsEgg.value)  { showWindowsEgg.value  = false; return; }
+      if (showAuthModal.value)   { showAuthModal.value   = false; return; }
+      popNav(); // cierra el overlay de post o autor si no hay modales abiertos
     }
   });
 });
 
-// 👇 CAMBIADO DE POPUP A REDIRECT PARA EVITAR COMPLICACIONES DE NAVEGADOR
+// Login con Google usando Redirect.
+// Redirect > Popup porque los popups se bloquean en ambientes con COOP estricto
+// (y Chrome está poniendo COOP en todo como si fuera salsa picante).
 const loginGoogle = async () => {
   authError.value = '';
-  try { 
-    await signInWithRedirect(auth, provider); 
-  }
-  catch { 
-    authError.value = 'Error al conectar con Google 🐧'; 
+  try {
+    await signInWithRedirect(auth, provider); // ¡VAMOS! (la página se va a recargar)
+  } catch {
+    authError.value = 'Error al conectar con Google 🐧'; // raro que llegue aquí, pero por si acaso
   }
 };
 
+// Login con email y contraseña. El clásico de toda la vida.
+// Tan antiguo como la web misma. Tan confiable como el usuario recuerde su contraseña.
 const loginEmail = async () => {
   authError.value = ''; authLoading.value = true;
   try {
     await signInWithEmailAndPassword(auth, authEmail.value, authPassword.value);
-    showAuthModal.value = false; authEmail.value = ''; authPassword.value = '';
-  } catch { authError.value = 'Correo o contraseña incorrectos 🐧'; }
-  authLoading.value = false;
-};
-
-const registerEmail = async () => {
-  authError.value = ''; authLoading.value = true;
-  if (!authName.value.trim()) { authError.value = 'Escribe tu nombre 🐧'; authLoading.value = false; return; }
-  try {
-    const cred = await createUserWithEmailAndPassword(auth, authEmail.value, authPassword.value);
-    await updateProfile(cred.user, { displayName: authName.value.trim() });
-    showAuthModal.value = false; authEmail.value = ''; authPassword.value = ''; authName.value = '';
-  } catch (e) {
-    if (e.code === 'auth/email-already-in-use') authError.value = 'Ese correo ya está registrado 🐧';
-    else if (e.code === 'auth/weak-password')   authError.value = 'Contraseña muy débil (mín. 6 car.) 🐧';
-    else authError.value = 'Error al registrarse 🐧';
+    showAuthModal.value = false;
+    authEmail.value = ''; authPassword.value = ''; // limpiar campos. privacidad ante todo.
+  } catch {
+    authError.value = 'Correo o contraseña incorrectos 🐧'; // no le digas cuál es el error real. seguridad.
   }
   authLoading.value = false;
 };
 
+// Registro de cuenta nueva. Incluye validación del nombre porque
+// "displayName: null" en Firebase hace cosas muy feas en la UI.
+// (ya lo vimos. no queremos volver a verlo.)
+const registerEmail = async () => {
+  authError.value = ''; authLoading.value = true;
+  if (!authName.value.trim()) {
+    authError.value = 'Escribe tu nombre 🐧';
+    authLoading.value = false;
+    return; // sin nombre no hay cuenta. así de simple.
+  }
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, authEmail.value, authPassword.value);
+    await updateProfile(cred.user, { displayName: authName.value.trim() }); // guardar el nombre YA
+    showAuthModal.value = false;
+    authEmail.value = ''; authPassword.value = ''; authName.value = '';
+  } catch (e) {
+    // Firebase tiene códigos de error específicos. los manejamos con amor y precisión.
+    if (e.code === 'auth/email-already-in-use') authError.value = 'Ese correo ya está registrado 🐧';
+    else if (e.code === 'auth/weak-password')   authError.value = 'Contraseña muy débil (mín. 6 car.) 🐧';
+    else                                         authError.value = 'Error al registrarse 🐧';
+  }
+  authLoading.value = false;
+};
+
+// Cerrar sesión. Simple. Limpio. Sin drama.
+// (volvemos al feed porque quedarse en "settings" sin usuario es un callejón sin salida.)
 const logout = () => { auth.signOut(); view.value = 'feed'; resetNav(); };
 
 
 // ══════════════════════════════════════════════════════════════════
-//  POSTS
+//  POSTS — el corazón palpitante de la aplicación.
+//  Sin posts no hay app. Solo un sidebar muy bonito y muy inútil.
 // ══════════════════════════════════════════════════════════════════
-const posts = ref([]);
+const posts = ref([]); // el array maestro. TODOS los posts viven aquí.
 
+// Trae todos los posts de Firestore ordenados por fecha (más nuevo primero).
+// Sí, trae TODOS. No hay paginación. Si la comunidad crece mucho... bueno,
+// ese será el problema del futuro nosotros. El futuro nosotros nos odiará.
 const fetchPosts = async () => {
   const q    = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
   posts.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
+// Abre un post en el overlay (modal de pantalla completa).
+// Guarda el hash #post-{id} en la URL para que sea compartible.
+// Si alguien comparte la URL y el post fue borrado, se queda en el feed. Tacto natural.
 const openPost = (post) => {
   history.pushState({ navLen: navStack.value.length + 1 }, '', `#post-${post.id}`);
-  pushNav({ type: 'post', data: { ...post } });
-  view.value = 'feed';
+  pushNav({ type: 'post', data: { ...post } }); // copia del post, no referencia
+  view.value = 'feed'; // nos aseguramos de estar en el feed para mostrar el overlay
 };
 
+// Abre el perfil público de un autor.
+// Intenta cargar el perfil completo desde Firestore.
+// Si no existe el perfil (usuario viejo sin perfil), usa los datos del post como fallback.
+// El spread de stopPropagation es para que no se abra el post al hacer click en el autor.
+// (clickear el autor dentro de un post ya abierto también funciona. somos amables.)
 const openAuthor = async (post, evt) => {
-  evt?.stopPropagation();
+  evt?.stopPropagation(); // ¡no abras el post también! basta con el perfil.
   let profile = {
     uid: post.authorUid || null, displayName: post.author,
     photoURL: post.authorPhoto || '', bio: '', nickname: '',
@@ -143,12 +342,13 @@ const openAuthor = async (post, evt) => {
       const snap = await getDoc(doc(db, 'profiles', post.authorUid));
       if (snap.exists()) {
         profile = { uid: post.authorUid, ...snap.data() };
-        if (!profile.photoURL) profile.photoURL = post.authorPhoto || '';
+        if (!profile.photoURL) profile.photoURL = post.authorPhoto || ''; // fallback foto
       } else {
-        profile.photoURL = post.authorPhoto || '';
+        profile.photoURL = post.authorPhoto || ''; // usuario sin perfil. le damos la foto del post.
       }
-    } catch { profile.photoURL = post.authorPhoto || ''; }
+    } catch { profile.photoURL = post.authorPhoto || ''; } // Firestore falló. vida sigue.
   }
+  // Filtra los posts de este autor desde el array local (sin query extra 💸)
   const authorPostsList = posts.value.filter(p =>
     p.authorUid === post.authorUid || p.author === post.author
   );
@@ -156,252 +356,498 @@ const openAuthor = async (post, evt) => {
   pushNav({ type: 'author', data: { profile, posts: authorPostsList } });
 };
 
+// Cierra el overlay actual (post o autor) y restaura el hash de la URL.
+// Si cerramos el último overlay, volvemos al pathname limpio.
 const closeOverlay = () => {
   popNav();
   if (navStack.value.length === 1) history.pushState({}, '', window.location.pathname);
 };
 
+// Computeds de conveniencia para saber qué está mostrando el overlay.
+// No acceden a Firestore. Solo leen el navStack. Baratos y rápidos.
 const expandedPost = computed(() => currentNav.value.type === 'post'   ? currentNav.value.data : null);
 const authorData   = computed(() => currentNav.value.type === 'author' ? currentNav.value.data : null);
 
 // ══════════════════════════════════════════════════════════════════
-//  FILTROS — múltiples categorías + tags + texto
+//  FILTROS — el buscador más completo que nadie pidió
+//  Soporta: texto libre, tags con #, múltiples categorías.
+//  Todo al mismo tiempo. Porque podemos. Aunque nadie lo use así.
 // ══════════════════════════════════════════════════════════════════
-const searchQuery      = ref('');
-const activeCategories = ref([]);  // múltiples categorías seleccionadas
-const activeTags       = ref([]);  // múltiples tags
+const searchQuery      = ref('');  // lo que el usuario escribe en la barra de búsqueda
+const activeCategories = ref([]);  // array de categorías activas (pueden ser varias)
+const activeTags       = ref([]);  // reservado para filtro de tags por click (futuro)
 
-// Parsear la búsqueda: palabras con # → tags, sin # → texto/autor/nombre
+// Parsea la búsqueda separando tags (#algo) de texto libre.
+// Ejemplo: "linux, #bash, seguridad" → tags: ['bash'], texts: ['linux', 'seguridad']
+// (los tags van al filtro exacto de tags del post, el texto va al título/autor/categoría)
 const parsedSearch = computed(() => {
   const parts = searchQuery.value.split(',').map(s => s.trim()).filter(Boolean);
   const tags  = [];
   const texts = [];
   parts.forEach(p => {
     if (p.startsWith('#')) tags.push(p.slice(1).toLowerCase());
-    else texts.push(p.toLowerCase());
+    else                   texts.push(p.toLowerCase());
   });
   return { tags, texts };
 });
 
-// Ir a feed con categoría al hacer click en sidebar categoría
+// Click en una categoría del sidebar → la agrega/quita del filtro activo
 const goToCategory = (cat) => {
   if (!activeCategories.value.includes(cat)) activeCategories.value.push(cat);
   else activeCategories.value = activeCategories.value.filter(c => c !== cat);
-  view.value = 'feed'; resetNav();
+  view.value = 'feed'; resetNav(); // siempre volvemos al feed al filtrar
 };
 
+// Click en el chip de categoría activa (en la barra de filtros) → la quita
 const toggleCategoryFilter = (cat) => {
   const i = activeCategories.value.indexOf(cat);
   if (i === -1) activeCategories.value.push(cat);
-  else activeCategories.value.splice(i, 1);
+  else          activeCategories.value.splice(i, 1);
 };
 
+// Botón "✕ todo" — limpia absolutamente todo. tabula rasa. día cero.
 const clearAllFilters = () => {
   searchQuery.value = ''; activeCategories.value = []; activeTags.value = [];
 };
 
+// La función filtro universal. Aplica todos los criterios activos a una lista de posts.
+// Se usa para el feed, favoritos Y mis posts → un solo lugar para mantener.
+// (DRY: Don't Repeat Yourself. principio básico. lo hemos violado antes. no más.)
 const applyPostFilter = (list) => {
   let p = list;
-  // Filtro por categorías
+  // Primero filtrar por categorías (si hay alguna activa)
   if (activeCategories.value.length)
     p = p.filter(x => activeCategories.value.includes(x.category));
-  // Parsear búsqueda
+  // Luego aplicar lo que escribió en la búsqueda
   const { tags, texts } = parsedSearch.value;
   if (tags.length)
+    // todos los tags del filtro deben estar en los tags del post (AND lógico)
     p = p.filter(x => tags.every(t => (x.tags || []).some(pt => pt.toLowerCase().includes(t))));
   if (texts.length)
+    // basta con que coincida UNO de los textos (OR lógico) en título/autor/categoría/tags
     p = p.filter(x => texts.some(q =>
-      x.title?.toLowerCase().includes(q) ||
-      x.author?.toLowerCase().includes(q) ||
+      x.title?.toLowerCase().includes(q)    ||
+      x.author?.toLowerCase().includes(q)   ||
       x.category?.toLowerCase().includes(q) ||
       (x.tags || []).some(t => t.toLowerCase().includes(q))
     ));
   return p;
 };
 
-const filteredPosts   = computed(() => applyPostFilter(posts.value));
-const favoritePosts   = computed(() => applyPostFilter(posts.value.filter(p => hasStarred(p))));
-const myPosts         = computed(() => applyPostFilter(posts.value.filter(p =>
+// Los tres feeds computados. Cada uno aplica el filtro sobre su subconjunto.
+const filteredPosts = computed(() => applyPostFilter(posts.value));
+const favoritePosts = computed(() => applyPostFilter(posts.value.filter(p => hasStarred(p))));
+const myPosts       = computed(() => applyPostFilter(posts.value.filter(p =>
   p.authorUid === user.value?.uid || p.author === user.value?.displayName
+  // doble condición porque usuarios viejos pueden no tener UID guardado en el post
 )));
 
+// ¿Hay algún filtro activo? Para mostrar/ocultar el botón "limpiar todo"
 const hasActiveFilters = computed(() =>
   searchQuery.value || activeCategories.value.length || activeTags.value.length
 );
 
-// Easter egg Windows
+// EASTER EGG: si el usuario busca "windows" → BSoD de Linux. porque somos así.
+// (si alguien reporta esto como bug, es que no entiende la cultura)
 const showWindowsEgg = ref(false);
 watch(searchQuery, (v) => { showWindowsEgg.value = v.toLowerCase().includes('windows'); });
 
 // ══════════════════════════════════════════════════════════════════
-//  MODAL BORRAR
+//  MODAL DE BORRADO DE POST — porque borrar sin confirmar es peligroso
+//  (alguien ya borró un post sin querer. fue traumático. no preguntéis.)
+//  El usuario debe escribir el TÍTULO EXACTO del post para confirmar.
+//  Sí, es molesto. Ese es el punto.
 // ══════════════════════════════════════════════════════════════════
 const showDeleteModal  = ref(false);
-const deleteTarget     = ref(null);
-const deleteConfirmTxt = ref('');
-const deleteCanDelete  = computed(() => deleteConfirmTxt.value === deleteTarget.value?.title);
+const deleteTarget     = ref(null);   // el post condenado a muerte
+const deleteConfirmTxt = ref('');     // lo que escribe el usuario para confirmar
+const deleteCanDelete  = computed(() => deleteConfirmTxt.value === deleteTarget.value?.title); // ¿coincide exactamente?
 
+// Prepara el modal de borrado. No borra nada todavía. Solo muestra el modal.
 const askDeletePost = (post, evt) => {
-  evt?.stopPropagation();
+  evt?.stopPropagation(); // el click no debe llegar al post-card
   deleteTarget.value = post; deleteConfirmTxt.value = ''; showDeleteModal.value = true;
 };
+
+// Ejecuta el borrado real en CASCADA ATÓMICA.
+// Limpia subcolecciones en Firestore para evitar documentos fantasma y luego cierra la UI.
 const confirmDeletePost = async () => {
-  if (!deleteCanDelete.value) return;
-  await deleteDoc(doc(db, 'posts', deleteTarget.value.id));
-  showDeleteModal.value = false; deleteTarget.value = null;
-  popNav(); fetchPosts();
-};
+  if (!deleteCanDelete.value || !deleteTarget.value) return; // guard de seguridad estricto
 
-// ══════════════════════════════════════════════════════════════════
-//  COMENTARIOS — árbol infinito
-// ══════════════════════════════════════════════════════════════════
-const commentsByPost  = ref({});
-const replyingTo      = ref({});
-const commentInput    = ref({});
-const loadingComments = ref({});
-
-const fetchComments = async (postId) => {
-  if (loadingComments.value[postId]) return;
-  loadingComments.value[postId] = true;
-  const q    = query(collection(db, 'posts', postId, 'comments'), orderBy('createdAt', 'asc'));
-  const snap = await getDocs(q);
-  commentsByPost.value = { ...commentsByPost.value, [postId]: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
-  loadingComments.value[postId] = false;
-};
-
-const sendComment = async (postId, parentId = null) => {
-  if (!user.value) return;
-  const inputId = `comment-input-${postId}`;
-  const el = document.getElementById(inputId);
-  if (!el) return;
-  const text = el.value.trim();
-  if (!text) return;
+  const postId = deleteTarget.value.id;
 
   try {
-    // Forzamos un nombre válido si displayName es null o vacío
-    const authorName = user.value.displayName && user.value.displayName.trim() 
-      ? user.value.displayName 
-      : (user.value.email ? user.value.email.split('@')[0] : 'Pingüino Anónimo');
+    // 1. Purgamos la subcolección de comentarios entera primero
+    const commentsRef = collection(db, 'posts', postId, 'comments');
+    const q = query(commentsRef);
+    const snap = await getDocs(q);
+
+    // Ejecutamos todos los borrados de comentarios en paralelo (así vuela todo rápido)
+    const deletePromises = snap.docs.map(d => deleteDoc(doc(db, 'posts', postId, 'comments', d.id)));
+    await Promise.all(deletePromises);
+    console.log(`Cascada: Removidos ${snap.size} comentarios residuales.`);
+
+    // 2. Ahora que los hijos murieron, ejecutamos el deleteDoc original del post
+    await deleteDoc(doc(db, 'posts', postId));
+    console.log(`Cascada: Post ${postId} eliminado de raíz.`);
+
+    // 3. Limpieza de estados de interfaz y navegación
+    showDeleteModal.value = false; 
+    deleteTarget.value = null;
+    deleteConfirmTxt.value = '';
+    
+    popNav();     // cierra el overlay si estaba abierto
+    fetchPosts(); // refresca el feed
+    
+  } catch (error) {
+    console.error("Error crítico en la cascada de borrado del post:", error);
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════
+//  COMENTARIOS — árbol infinito de opiniones de internet (Y poda de fantasmas)
+//
+//  Los comentarios son una subcolección de cada post en Firestore:
+//    posts/{postId}/comments/{commentId}
+//
+//  Cada comentario puede tener un parentId que apunta a otro comentario.
+//  buildTree() convierte la lista plana en árbol aplicando una poda de nodos 
+//  eliminados sin descendencia. CommentNode lo renderiza recursivamente.
+//  Aquí en App.vue manejamos el CRUD y el estado global.
+// ══════════════════════════════════════════════════════════════════
+const commentsByPost        = ref({});  // { [postId]: Comment[] } — el caché maestro de comentarios
+const replyingTo            = ref({});  // { [postId]: commentId | null } — ¿a qué comentario respondemos?
+const commentInput          = ref({});  // { [postId]: string } — el texto del input de comentario
+const loadingComments       = ref({});  // { [postId]: boolean } — guard anti-race-condition
+
+
+// Propiedad computada para habilitar el botón del modal solo si escribe 'borrar'
+const commentCanDelete = computed(() => commentDeleteConfirmTxt.value.toLowerCase() === 'borrar');
+
+// Carga los comentarios de un post desde Firestore.
+const fetchComments = async (postId, force = false) => {
+  if (!force && loadingComments.value[postId]) return; 
+  loadingComments.value[postId] = true;
+  try {
+    const q    = query(collection(db, 'posts', postId, 'comments'), orderBy('createdAt', 'asc'));
+    const snap = await getDocs(q);
+    commentsByPost.value = { ...commentsByPost.value, [postId]: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+  } catch (err) {
+    console.error('fetchComments error:', err);
+    if (!commentsByPost.value[postId]) commentsByPost.value = { ...commentsByPost.value, [postId]: [] };
+  } finally {
+    loadingComments.value[postId] = false; 
+  }
+};
+
+// Envía un comentario nuevo o respuesta.
+const sendComment = async (postId, parentId = null) => {
+  if (!user.value) return; 
+  const text = (commentInput.value[postId] || '').trim();
+  if (!text) return; 
+
+  try {
+    const authorName = user.value.displayName?.trim()
+      || user.value.email?.split('@')[0]
+      || 'Pingüino Anónimo'; 
 
     const commentData = {
-      text: text,
-      authorUid: user.value.uid,
-      author: authorName,
-      parentId: parentId || null,
-      createdAt: serverTimestamp()
+      text,
+      authorUid:  user.value.uid,
+      author:     authorName,
+      parentId:   parentId || null,
+      createdAt:  serverTimestamp()
     };
-
-    // Aseguramos también guardar la foto del autor si existe
-    if (user.value.photoURL) {
-      commentData.authorPhoto = user.value.photoURL;
-    }
+    if (user.value.photoURL) commentData.authorPhoto = user.value.photoURL;
 
     await addDoc(collection(db, 'posts', postId, 'comments'), commentData);
 
-    // Limpieza de inputs
-    el.value = '';
-    if (commentInput.value[postId]) commentInput.value[postId] = '';
-    if (replyingTo.value[postId]) replyingTo.value[postId] = null;
+    commentInput.value = { ...commentInput.value, [postId]: '' };
+    replyingTo.value   = { ...replyingTo.value,   [postId]: null };
 
-    fetchComments(postId);
+    await fetchComments(postId, true);
   } catch (error) {
     console.error("Error completo al enviar comentario:", error);
   }
 };
 
+// Activa el modo "respondiendo a X" para el input principal.
 const setReply = (postId, commentId) => {
   replyingTo.value = { ...replyingTo.value, [postId]: commentId };
   nextTick(() => document.getElementById(`comment-input-${postId}`)?.focus());
 };
 
-const buildTree = (comments, parentId = null) =>
-  comments.filter(c => (c.parentId || null) === parentId)
-          .map(c => ({ ...c, children: buildTree(comments, c.id) }));
+// Abre el modal de confirmación y guarda el objetivo a eliminar
+const handlePrepDeleteComment = (postId, commentId, text) => {
+  commentDeleteTarget.value = { postId, commentId, text };
+  commentDeleteConfirmTxt.value = '';
+  showCommentDeleteModal.value = true;
+};
 
+const confirmDeleteComment = async () => {
+  if (!commentCanDelete.value || !commentDeleteTarget.value) return;
+
+  const { postId, commentId } = commentDeleteTarget.value;
+  const flatComments = commentsByPost.value[postId] || [];
+
+  // Función interna para comprobar si un nodo tiene descendencia "viva" en el array plano
+  const hasLiveDescendants = (id) => {
+    const children = flatComments.filter(c => c.parentId === id);
+    for (const child of children) {
+      if (!child.isDeleted) return true; // Encontró un hijo vivo
+      if (hasLiveDescendants(child.id)) return true; // Encontró un nieto/descendiente vivo
+    }
+    return false;
+  };
+
+  try {
+    const commentRef = doc(db, 'posts', postId, 'comments', commentId);
+    const currentComment = flatComments.find(c => c.id === commentId);
+
+    // 1. ¿Tiene hijos vivos en algún nivel de profundidad?
+    if (hasLiveDescendants(commentId)) {
+      // CASO A: Tiene descendencia útil. Aplicamos BORRADO LÓGICO para no romper el árbol.
+      await updateDoc(commentRef, {
+        text: '[Este comentario ha sido eliminado por el autor]',
+        isDeleted: true,
+        author: 'Pingüino Eliminado',
+        authorUid: null,
+        authorPhoto: ''
+      });
+      console.log("Soft-delete aplicado: manteniendo estructura para los hijos.");
+    } else {
+      // CASO B: Está completamente aislado o sus hijos ya están borrados. ¡PURGA FÍSICA!
+      await deleteDoc(commentRef);
+      console.log(`Purgado físico exitoso del comentario: ${commentId}`);
+
+      // 2. RECOLECTOR DE BASURA EN CASCADA REVERSA (Limpieza de ancestros fantasmas)
+      let currentParentId = currentComment?.parentId;
+      
+      while (currentParentId) {
+        const parentNode = flatComments.find(c => c.id === currentParentId);
+        
+        // Si el padre ya estaba marcado como eliminado...
+        if (parentNode && parentNode.isDeleted) {
+          // ...y verificamos si le quedó ALGO vivo tras la purga del hijo actual
+          // Filtramos descartando el comentario que acabamos de borrar físicamente
+          const otherChildren = flatComments.filter(c => c.parentId === currentParentId && c.id !== commentId);
+          const parentHasLiveChildren = otherChildren.some(c => !c.isDeleted || hasLiveDescendants(c.id));
+
+          if (!parentHasLiveChildren) {
+            // El padre ahora es un residuo absoluto. ¡Lo exterminamos de Firestore!
+            const parentRef = doc(db, 'posts', postId, 'comments', currentParentId);
+            await deleteDoc(parentRef);
+            console.log(`Recolector de basura: Removido padre fantasma obsoleto ${currentParentId}`);
+            
+            // Escalamos al abuelo para ver si también quedó huérfano y fantasma
+            currentParentId = parentNode.parentId;
+            continue;
+          }
+        }
+        break; // Si el padre está vivo o tiene otros hijos útiles, detenemos la purga hacia arriba
+      }
+    }
+
+    // Limpieza estándar del modal
+    showCommentDeleteModal.value = false;
+    commentDeleteTarget.value = null;
+    commentDeleteConfirmTxt.value = '';
+
+    // Refrescamos la caché local desde Firestore para sincronizar
+    await fetchComments(postId, true);
+  } catch (error) {
+    console.error("Error en el motor de purga de comentarios:", error);
+  }
+};
+
+// Edición de comentario tradicional (actualiza texto)
+const handleUpdateComment = async (postId, commentId, newText) => {
+  if (!newText.trim()) return;
+  try {
+    const commentRef = doc(db, 'posts', postId, 'comments', commentId);
+    await updateDoc(commentRef, {
+      text: newText,
+      editedAt: serverTimestamp()
+    });
+    await fetchComments(postId, true);
+  } catch (error) {
+    console.error("Error al editar comentario:", error);
+  }
+};
+
+// ALGORITMO DE PODA DE FANTASMAS (De abajo hacia arriba)
+const buildTree = (flatComments, parentId = null) => {
+  const result = [];
+  const children = flatComments.filter(c => (c.parentId || null) === parentId);
+
+  for (const child of children) {
+    // 1. Resolvemos recursivamente primero las sub-ramas más profundas
+    const processedChildren = buildTree(flatComments, child.id);
+
+    // 2. Filtramos sólo los hijos que aporten valor (vivos o con descendencia útil)
+    const usefulChildren = processedChildren.filter(c => !c.isDeleted || c.children.length > 0);
+
+    // 3. REGLA DE PODA: Si este nodo está eliminado y no le quedan hijos útiles... ¡Adios!
+    if (child.isDeleted && usefulChildren.length === 0) {
+      continue; 
+    }
+
+    // 4. Si sobrevive, se inserta en el árbol con su descendencia limpia
+    result.push({
+      ...child,
+      children: usefulChildren
+    });
+  }
+
+  return result;
+};
+
+// Devuelve el árbol listo para renderizar para un post dado.
 const commentTree = (postId) => buildTree(commentsByPost.value[postId] || [], null);
 
-watch(expandedPost, (p) => { if (p?.id && !commentsByPost.value[p.id]) fetchComments(p.id); });
+// Cuenta TODOS los comentarios (vivos y marcados) para mantener el contador del feed
+const commentCount = (postId) => (commentsByPost.value[postId] || []).length;
+
+// Watcher para cargar comentarios al expandir un post
+watch(expandedPost, (p, prev) => {
+  if (p?.id) {
+    const force = prev?.id === p.id; 
+    fetchComments(p.id, force);
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════
-//  ESTRELLAS
+//  ESTRELLAS — el sistema de "me gusta" de pobres.
+//  (no es un "like". es una estrella. hay diferencia cultural.)
+//  Usamos arrayUnion/arrayRemove para operaciones atómicas en Firestore.
+//  Actualización optimista: cambiamos la UI antes de esperar a Firestore.
+//  Si Firestore falla... bueno, el count puede estar desincronizado.
+//  Probabilidad: muy baja. Consecuencia: muy menor. Aceptable.
 // ══════════════════════════════════════════════════════════════════
 const toggleStar = async (post, evt) => {
-  evt?.stopPropagation();
-  if (!user.value) return;
-  const uid   = user.value.uid;
-  const stars = [...(post.stars || [])];
-  const r     = doc(db, 'posts', post.id);
-  const adding = !stars.includes(uid);
+  evt?.stopPropagation(); // no abrir el post al hacer click en la estrella
+  if (!user.value) return; // sin login no hay estrella. a registrarse.
+  const uid    = user.value.uid;
+  const stars  = [...(post.stars || [])];
+  const r      = doc(db, 'posts', post.id);
+  const adding = !stars.includes(uid); // ¿agregar o quitar?
   try {
-    if (adding) await updateDoc(r, { stars: arrayUnion(uid) });
-    else        await updateDoc(r, { stars: arrayRemove(uid) });
+    if (adding) await updateDoc(r, { stars: arrayUnion(uid) });    // añadir UID al array
+    else        await updateDoc(r, { stars: arrayRemove(uid) });   // quitarlo
+    // Actualización optimista del estado local (sin re-fetchear todo)
     const newStars = adding ? [...stars, uid] : stars.filter(s => s !== uid);
     post.stars = newStars;
+    // Sincronizar el array maestro de posts
     const idx = posts.value.findIndex(p => p.id === post.id);
     if (idx !== -1) posts.value[idx] = { ...posts.value[idx], stars: newStars };
+    // Sincronizar también el navStack si el post está abierto en overlay
     const entry = navStack.value.find(e => e.type === 'post' && e.data.id === post.id);
     if (entry) entry.data = { ...post, stars: newStars };
-  } catch (e) { console.error('toggleStar error:', e); }
+  } catch (e) { console.error('toggleStar error:', e); } // Firestore falló. la estrella no se guardó. ¯\_(ツ)_/¯
 };
-const hasStarred = (post) => (post.stars || []).includes(user.value?.uid);
-const starCount  = (post) => (post.stars || []).length;
+const hasStarred = (post) => (post.stars || []).includes(user.value?.uid); // ¿tiene este usuario estrella en este post?
+const starCount  = (post) => (post.stars || []).length;                    // total de estrellas
 
 // ══════════════════════════════════════════════════════════════════
-//  EDITAR / PUBLICAR POST
+//  EDITAR / PUBLICAR POST — el corazón del editor
+//  Compartido entre "crear post nuevo" y "editar post existente".
+//  editingPost != null → modo edición. null → modo creación.
+//  El botón cambia de "🐧 Tuxtear!" a "💾 Guardar". Muy evocador.
 // ══════════════════════════════════════════════════════════════════
-const editingPost      = ref(null);
+const editingPost      = ref(null); // el post siendo editado, o null si es nuevo
 const title            = ref('');
 const content          = ref('');
 const selectedTags     = ref([]);
 const selectedCategory = ref('');
-const editorRef        = ref(null);
-const titleError       = ref('');
+const editorRef        = ref(null); // referencia al <textarea> del editor (para el toolbar MD)
+const titleError       = ref('');   // mensaje de error del título (ej: "no puedes usar #")
 
+// Rellena el editor con los datos del post a editar y navega a la vista de editor.
 const startEdit = (post, evt) => {
   evt?.stopPropagation();
-  editingPost.value = post; title.value = post.title; content.value = post.content;
-  selectedCategory.value = post.category || ''; selectedTags.value = [...(post.tags || [])];
+  editingPost.value = post;
+  title.value = post.title; content.value = post.content;
+  selectedCategory.value = post.category || '';
+  selectedTags.value = [...(post.tags || [])]; // copia del array, no referencia
   titleError.value = ''; resetNav(); view.value = 'new-post';
 };
 
+// El título no puede tener # porque rompería el sistema de hash de URLs.
+// (lo sé, lo sé. deberíamos sanitizar en backend también. "backlog".)
 const onTitleInput = () => {
   if (title.value.includes('#')) {
     title.value = title.value.replace(/#/g, '');
     titleError.value = 'El título no puede contener #';
-    setTimeout(() => { titleError.value = ''; }, 2500);
+    setTimeout(() => { titleError.value = ''; }, 2500); // el error desaparece solo. UX bonita.
   }
 };
 
+// Publica o actualiza el post. Valida que haya título, contenido y categoría.
+// Al publicar exitosamente: limpia el formulario, borra el borrador y vuelve al feed.
 const publish = async () => {
   if (!title.value || !content.value || !selectedCategory.value) return;
-  const cleanTitle = title.value.replace(/#/g, '');
+  const cleanTitle = title.value.replace(/#/g, ''); // doble sanitización. nunca está de más.
   if (editingPost.value) {
+    // MODO EDICIÓN: actualizamos el documento existente
     await updateDoc(doc(db, 'posts', editingPost.value.id), {
       title: cleanTitle, content: content.value,
       category: selectedCategory.value, tags: selectedTags.value,
-      updatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(), // guardamos cuándo se editó
     });
     editingPost.value = null;
   } else {
+    // MODO CREACIÓN: creamos un documento nuevo
     await addDoc(collection(db, 'posts'), {
       title: cleanTitle, content: content.value,
       category: selectedCategory.value, tags: selectedTags.value,
-      author: user.value.displayName, authorUid: user.value.uid,
+      author:      user.value.displayName,
+      authorUid:   user.value.uid,
       authorPhoto: user.value.photoURL || '',
-      createdAt: serverTimestamp(), stars: [],
+      createdAt:   serverTimestamp(),
+      stars:       [], // empieza sin estrellas. la vida es dura.
     });
+    clearDraft(); // ¡el borrador cumplió su misión! a descansar.
   }
   title.value = ''; content.value = ''; selectedTags.value = []; selectedCategory.value = '';
-  tuxpitVisible.value = false; view.value = 'feed'; fetchPosts();
+  tuxpitVisible.value = false;
+  view.value = 'feed';
+  fetchPosts(); // refresca el feed para mostrar el nuevo/actualizado post
 };
 
+// Cancela la edición y vuelve al feed.
+// NO borra el borrador (por si el usuario cancela sin querer y quiere recuperar lo escrito).
 const cancelEdit = () => {
   editingPost.value = null; title.value = ''; content.value = '';
   selectedTags.value = []; selectedCategory.value = ''; view.value = 'feed';
 };
 
+// Restaura el borrador al abrir el editor para un post NUEVO.
+// Solo aplica si el usuario no está editando un post existente.
+watch(view, (v) => {
+  if (v === 'new-post' && !editingPost.value) {
+    const draft = loadDraft();
+    if (draft && (draft.title || draft.content)) {
+      title.value            = draft.title            || '';
+      content.value          = draft.content          || '';
+      selectedCategory.value = draft.selectedCategory || '';
+      selectedTags.value     = draft.selectedTags     || [];
+    }
+  }
+});
+
+// Auto-guarda el borrador mientras el usuario escribe.
+// { deep: true } para detectar cambios dentro del array de tags.
+// (sin deep, cambiar tags no disparaba el watcher. y nos preguntábamos por qué.)
+watch([title, content, selectedCategory, selectedTags], () => {
+  if (view.value === 'new-post' && !editingPost.value) saveDraft();
+}, { deep: true });
+
 // ══════════════════════════════════════════════════════════════════
-//  CONFIGURACIÓN — avatar como base64 en Firestore (sin CORS)
+//  CONFIGURACIÓN — perfil del usuario
+//  Avatar guardado como base64 en Firestore porque Firebase Storage
+//  tiene reglas CORS que nos daban dolor de cabeza.
+//  ¿Eficiente? No. ¿Simple? Sí. ¿Gratis? Sí (hasta los límites).
+//  Solución de ingeniería: perfectamente imperfecta.
 // ══════════════════════════════════════════════════════════════════
 const settingsNickname      = ref('');
 const settingsBio           = ref('');
@@ -410,11 +856,12 @@ const settingsHideEmail     = ref(false);
 const settingsHideName      = ref(false);
 const settingsSaving        = ref(false);
 const settingsAvatarPreview = ref('');
-const settingsAvatarBase64  = ref('');  // guardamos base64 en Firestore, sin Storage
+const settingsAvatarBase64  = ref(''); // el avatar como string base64. largo. muy largo.
 
+// Carga los datos del perfil del usuario desde Firestore y navega a settings.
 const openSettings = async () => {
-  if (!user.value) return;
-  settingsAvatarPreview.value = user.value.photoURL || '/tux.png';
+  if (!user.value) return; // sin usuario no hay settings. lógica básica.
+  settingsAvatarPreview.value = user.value.photoURL || '/tux.png'; // preview inmediato
   settingsAvatarBase64.value  = '';
   try {
     const snap = await getDoc(doc(db, 'profiles', user.value.uid));
@@ -423,27 +870,32 @@ const openSettings = async () => {
       settingsNickname.value      = d.nickname  || '';
       settingsBio.value           = d.bio       || '';
       settingsCustomUrl.value     = d.customUrl || '';
-      settingsHideEmail.value     = d.hideEmail ?? false;
+      settingsHideEmail.value     = d.hideEmail ?? false; // ?? porque false es válido
       settingsHideName.value      = d.hideName  ?? false;
       settingsAvatarPreview.value = d.avatarB64 || user.value.photoURL || '/tux.png';
     }
-  } catch {}
+  } catch {} // si falla Firestore, mostramos el estado vacío. acceptable.
   resetNav(); view.value = 'settings';
 };
 
+// Maneja el cambio de avatar: lee el archivo como base64 y actualiza el preview.
+// Revoca el blob anterior si existe para evitar memory leaks.
+// (los memory leaks en el browser son el karma de no hacer cleanup.)
 const onAvatarChange = (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  // Revoca el blob anterior si existe
   if (settingsAvatarPreview.value.startsWith('blob:')) URL.revokeObjectURL(settingsAvatarPreview.value);
   const reader = new FileReader();
   reader.onload = (ev) => {
-    settingsAvatarBase64.value  = ev.target.result;   // data:image/...;base64,...
-    settingsAvatarPreview.value = ev.target.result;
+    settingsAvatarBase64.value  = ev.target.result; // data:image/...;base64,...
+    settingsAvatarPreview.value = ev.target.result; // preview inmediato, sin subir nada
   };
   reader.readAsDataURL(file);
 };
 
+// Guarda todos los datos del perfil en Firestore.
+// { merge: true } = solo actualiza los campos que enviamos, no sobreescribe todo.
+// (sin merge, si olvidas un campo en el objeto, ese campo desaparece de Firestore. lo aprendimos.)
 const saveSettings = async () => {
   if (!user.value) return;
   settingsSaving.value = true;
@@ -455,18 +907,40 @@ const saveSettings = async () => {
     avatarB64,
     nickname:    settingsNickname.value.trim(),
     bio:         settingsBio.value.trim(),
-    customUrl:   settingsCustomUrl.value.trim().replace(/\s+/g, '-').toLowerCase(),
+    customUrl:   settingsCustomUrl.value.trim().replace(/\s+/g, '-').toLowerCase(), // slug-ificado
     hideEmail:   settingsHideEmail.value,
     hideName:    settingsHideName.value,
     updatedAt:   serverTimestamp(),
   }, { merge: true });
   settingsSaving.value = false;
   settingsAvatarBase64.value = '';
-  view.value = 'feed';
+  view.value = 'feed'; // de vuelta al feed. misión cumplida.
 };
 
-// Avatar display: prioriza avatarB64 del perfil
+// ── HELPERS DE AVATAR ────────────────────────────────────────────
+// Función que ESTABA AQUÍ, fue eliminada por accidente durante una refactorización,
+// causó un TypeError espectacular en producción, y ahora vive aquí para siempre.
+// Lección: no muevas funciones sin buscar todos sus usos primero. grep es tu amigo.
+//
+// Devuelve la URL del avatar del usuario, o el Tux por defecto si no tiene foto.
+// Se usa en TODOS los <img> de avatar de la app. Absolutamente todos. Sin excepción.
 const getUserAvatar = (photoURL) => photoURL || '/tux.png';
+
+// ── COPIAR MARKDOWN AL PORTAPAPELES ──────────────────────────────
+// Para los puristas que quieren el contenido en su formato original.
+// Genera un markdown básico con el título como H1 y el contenido del post.
+// El botón muestra "✅ ¡Copiado!" por 2 segundos y vuelve a su estado normal.
+const copiedPostId = ref(null); // qué post tiene el estado "copiado" activo
+const copyPostMarkdown = async (post) => {
+  const md = `# ${post.title}\n\n${post.content}`;
+  try {
+    await navigator.clipboard.writeText(md);
+    copiedPostId.value = post.id;
+    setTimeout(() => { copiedPostId.value = null; }, 2000); // 2 segundos de gloria
+  } catch {
+    alert('No se pudo copiar al portapapeles 🐧'); // raro pero posible en HTTP sin HTTPS
+  }
+};
 
 // ══════════════════════════════════════════════════════════════════
 //  TAGS / CATEGORÍAS
@@ -505,8 +979,55 @@ const applyTool = (tool) => {
 };
 
 // ══════════════════════════════════════════════════════════════════
-//  TUXPIT / TUX SOMBRERO
+//  EASTER EGG: Tux del sidebar explota en mini-tuxes 🐧💥
 // ══════════════════════════════════════════════════════════════════
+const miniTuxes = ref([]); // Array de { id, x, y, vx, vy, rotation, size, opacity }
+let miniTuxTimer = null;
+
+const explodeTux = (event) => {
+  tuxSombrero(); // También hace el sombrero
+  const rect = event.currentTarget.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+
+  const count = 18 + Math.floor(Math.random() * 12); // 18-30 mini tuxes
+  const newTuxes = Array.from({ length: count }, (_, i) => {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+    const speed = 120 + Math.random() * 220;
+    return {
+      id: Date.now() + i,
+      x: cx,
+      y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 80,
+      rotation: Math.random() * 720 - 360,
+      size: 20 + Math.random() * 28,
+      opacity: 1,
+      born: Date.now(),
+    };
+  });
+  miniTuxes.value = [...miniTuxes.value, ...newTuxes];
+
+  // Animar con requestAnimationFrame
+  const animate = () => {
+    const now = Date.now();
+    miniTuxes.value = miniTuxes.value
+      .map(t => {
+        const age = (now - t.born) / 1000;
+        return {
+          ...t,
+          x: t.x + t.vx * 0.016,
+          y: t.y + t.vy * 0.016 + 180 * age * 0.016,
+          vy: t.vy + 320 * 0.016,
+          opacity: Math.max(0, 1 - age * 1.5),
+        };
+      })
+      .filter(t => t.opacity > 0);
+
+    if (miniTuxes.value.length > 0) requestAnimationFrame(animate);
+  };
+  requestAnimationFrame(animate);
+};
 const tuxpitVisible = ref(false);
 const tuxpitTimer   = ref(null);
 const onContentInput = () => {
@@ -532,6 +1053,36 @@ const canPublish  = computed(()=>title.value.trim()&&content.value.trim()&&selec
 const outputHtml  = computed(()=>marked(content.value,{gfm:true,breaks:true}));
 const isOwner     = (post)=>user.value&&(user.value.uid===post.authorUid||user.value.displayName===post.author);
 const formatDate  = ts=>{if(!ts)return'';const d=ts.toDate?ts.toDate():new Date(ts);return d.toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric'});};
+
+// ══════════════════════════════════════════════════════════════════
+//  ESTADOS Y LÓGICA PARA EDICIÓN Y MODAL DE BORRADO DE COMENTARIOS
+// ══════════════════════════════════════════════════════════════════
+const showCommentDeleteModal = ref(false)
+const commentDeleteTarget = ref(null)
+const commentDeleteConfirmTxt = ref('')
+
+
+const deleteComment = async (postId, commentId) => {
+  try {
+    const commentRef = doc(db, 'posts', postId, 'comments', commentId);
+    
+    // En lugar de borrar el documento completo, hacemos un BORRADO LÓGICO
+    await updateDoc(commentRef, {
+      text: '[Este comentario ha sido eliminado por el autor]',
+      isDeleted: true,
+      author: 'Pingüino Eliminado', // Limpiamos el nombre original por privacidad
+      authorUid: null,              // Desvinculamos el UID
+      authorPhoto: ''               // Quitamos el avatar
+    });
+
+    // Refrescamos la caché local de comentarios para que impacte la UI de inmediato
+    await fetchComments(postId, true);
+  } catch (error) {
+    console.error("Error al aplicar soft-delete al comentario:", error);
+  }
+};
+
+
 </script>
 
 <template>
@@ -539,7 +1090,7 @@ const formatDate  = ts=>{if(!ts)return'';const d=ts.toDate?ts.toDate():new Date(
     <!-- ═══════════ SIDEBAR ═══════════ -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <img :src="tuxImg" alt="Tux" class="tux-logo" @click="tuxSombrero"/>
+        <img :src="tuxImg" alt="Tux" class="tux-logo" title="Click: sombrero 🎩 | Doble click: ¡EXPLOTA! 💥" @click="tuxSombrero" @dblclick="explodeTux"/>
         <span class="brand-name">TuxTimes</span>
         <span class="brand-badge">GPLv2</span>
       </div>
@@ -672,6 +1223,11 @@ const formatDate  = ts=>{if(!ts)return'';const d=ts.toDate?ts.toDate():new Date(
         <!-- EDITOR -->
         <section v-else-if="view==='new-post'" key="editor" class="editor-section">
           <h2 class="editor-title">{{ editingPost?'✏️ Editar Tuxpost':'✍️ Redactar Tuxpost' }}</h2>
+          <!-- Indicador de borrador guardado -->
+          <div v-if="!editingPost && (title||content)" class="draft-badge">
+            💾 Borrador guardado automáticamente
+            <button style="background:none;border:none;color:var(--red);cursor:pointer;font-size:.8rem;padding:0 0 0 6px" @click="clearDraft();title='';content='';selectedCategory='';selectedTags=[]" title="Descartar borrador">✕</button>
+          </div>
           <div style="position:relative">
             <input v-model="title" class="title-input" placeholder="Título del Tuxpost…" @input="onTitleInput"/>
             <transition name="tuxpit-pop">
@@ -847,6 +1403,9 @@ const formatDate  = ts=>{if(!ts)return'';const d=ts.toDate?ts.toDate():new Date(
                 <span class="author-link">{{ currentNav.data.author }}</span>
               </div>
               <div class="post-actions-row">
+                <button class="copy-md-btn" @click.stop="copyPostMarkdown(currentNav.data)" :title="'Copiar contenido en Markdown'">
+                  {{ copiedPostId === currentNav.data.id ? '✅ ¡Copiado!' : '📋 Copiar MD' }}
+                </button>
                 <button v-if="user&&!isOwner(currentNav.data)" class="star-btn" :class="{starred:hasStarred(currentNav.data)}" @click.stop="toggleStar(currentNav.data,$event)">⭐ {{ starCount(currentNav.data) }}</button>
                 <span v-else class="star-count-only">⭐ {{ starCount(currentNav.data) }}</span>
                 <template v-if="isOwner(currentNav.data)">
@@ -895,6 +1454,8 @@ const formatDate  = ts=>{if(!ts)return'';const d=ts.toDate?ts.toDate():new Date(
                   :get-avatar="getUserAvatar"
                   @reply="setReply"
                   @send="sendComment"
+                  @edit="handleUpdateComment"
+                  @delete="(postId, commentId, text) => handlePrepDeleteComment(postId, commentId, text)"
                 />
               </div>
             </div>
@@ -1000,6 +1561,43 @@ const formatDate  = ts=>{if(!ts)return'';const d=ts.toDate?ts.toDate():new Date(
         </div>
       </div>
     </transition>
+
+    <transition name="expand">
+      <div v-if="showCommentDeleteModal" class="modal-overlay" @click.self="showCommentDeleteModal = false">
+        <div class="delete-modal">
+          <div class="delete-modal-icon">🗑️</div>
+          <h2 class="delete-modal-title">¿Seguro que quieres borrar el comentario?</h2>
+          <p class="delete-modal-desc">Esta acción es <strong>irreversible</strong>. Escribe la palabra <strong>borrar</strong> para confirmar:</p>
+          
+          <div class="delete-modal-target" style="max-height: 75px; overflow-y: auto; font-style: italic; background: rgba(0,0,0,0.15); padding: 8px; border-radius: 4px; font-size: 13px; text-align: left; border-left: 3px solid #e74c3c; margin-bottom: 12px;">
+            "{{ commentDeleteTarget?.text }}"
+          </div>
+
+          <input 
+            v-model="commentDeleteConfirmTxt" 
+            class="auth-input" 
+            placeholder="Escribe 'borrar' aquí…" 
+            @keydown.enter="confirmDeleteComment"
+          />
+          
+          <div class="delete-modal-actions">
+            <button class="cancel-btn" @click="showCommentDeleteModal = false">Cancelar</button>
+            <button class="delete-confirm-btn" :disabled="!commentCanDelete" @click="confirmDeleteComment">
+              🗑 Borrar para siempre
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- ═══════ MINI TUXES EXPLOSION (Easter Egg) ═══════ -->
+    <teleport to="body">
+      <div
+        v-for="t in miniTuxes" :key="t.id"
+        style="position:fixed;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);user-select:none;line-height:1"
+        :style="{ left: t.x+'px', top: t.y+'px', fontSize: t.size+'px', opacity: t.opacity }"
+      >🐧</div>
+    </teleport>
   </div>
 </template>
 
@@ -1198,6 +1796,9 @@ body{overflow:hidden;background:#080b10}
 .modal-post-content img{max-width:100%;border-radius:10px;margin:12px 0}
 .modal-post-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px;padding-top:20px;border-top:1px solid var(--border)}
 .modal-post-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.copy-md-btn{padding:6px 14px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;cursor:pointer;font-size:.75rem;font-weight:700;font-family:inherit;transition:all .15s;white-space:nowrap}
+.copy-md-btn:hover{border-color:var(--accent);color:var(--accent)}
+.draft-badge{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px 10px;margin-bottom:6px}
 
 /* ── COMENTARIOS ─── */
 .comments-section{margin-top:36px;padding-top:28px;border-top:1px solid var(--border)}

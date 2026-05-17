@@ -1,7 +1,6 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 
-// 1. Recibimos los mismos parámetros exactos que pasas en tu App.vue
 const props = defineProps({
   comment:      { type: Object,   required: true },
   postId:       { type: String,   required: true },
@@ -12,22 +11,42 @@ const props = defineProps({
   getAvatar:    { type: Function, required: true },
 })
 
-// 2. Declaramos los eventos personalizados que devolverán la acción a App.vue
-const emit = defineEmits(['reply', 'send'])
+// Unificado: Usamos 'edit' para guardar el cambio y 'delete' para abrir el modal
+const emit = defineEmits(['reply', 'send', 'edit', 'delete'])
 
-// 3. Tu lógica original para dar formato regional a las marcas de tiempo de Firebase
+const isEditing = ref(false)
+const editText = ref(props.comment.text)
+
 const fmt = (ts) => {
   if (!ts) return ''
   const d = ts.toDate ? ts.toDate() : new Date(ts)
   return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })
 }
 
-// 4. Tus estilos matemáticos inline que identan visualmente las respuestas en cascada
 const nodeStyle = computed(() => ({
   marginLeft: `${Math.min(props.depth, 5) * 18}px`,
   borderLeft: props.depth > 0 ? '2px solid var(--border)' : 'none',
   paddingLeft: props.depth > 0 ? '12px' : '0'
 }))
+
+const startEdit = () => {
+  editText.value = props.comment.text
+  isEditing.value = true
+}
+
+const cancelEdit = () => {
+  isEditing.value = false
+  editText.value = props.comment.text
+}
+
+const saveEdit = () => {
+  if (!editText.value.trim() || editText.value.trim() === props.comment.text) {
+    isEditing.value = false
+    return
+  }
+  emit('edit', props.postId, props.comment.id, editText.value.trim())
+  isEditing.value = false
+}
 </script>
 
 <template>
@@ -37,27 +56,58 @@ const nodeStyle = computed(() => ({
         <img v-if="comment.authorPhoto" :src="getAvatar(comment.authorPhoto)" class="comment-avatar-sm"/>
         <span v-else style="font-size:18px">🐧</span>
         <span class="comment-author">{{ comment.author }}</span>
-        <span class="comment-date">{{ fmt(comment.createdAt) }}</span>
+        <span class="comment-date">
+          {{ fmt(comment.createdAt) }} 
+          <span v-if="comment.editedAt" style="font-size: 10px; opacity: 0.6; font-style: italic;">(editado)</span>
+        </span>
       </div>
-      <div class="comment-text">{{ comment.text }}</div>
+
+      <div v-if="isEditing" class="comment-edit-container" style="margin-top: 6px;">
+        <textarea 
+          v-model="editText" 
+          class="auth-input" 
+          style="width: 100%; min-height: 60px; resize: vertical; margin-bottom: 6px; font-family: inherit; font-size: 14px;"
+          @keydown.enter.prevent="saveEdit"
+        ></textarea>
+        <div style="display: flex; gap: 8px;">
+          <button @click="saveEdit" style="background: #2ecc71; border: none; color: white; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">Aceptar</button>
+          <button @click="cancelEdit" style="background: #7f8c8d; border: none; color: white; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">Cancelar</button>
+        </div>
+      </div>
+
+      <div v-else class="comment-text">{{ comment.text }}</div>
       
-      <button v-if="user" class="reply-btn" @click="emit('reply', postId, comment.id)">
-        ↩ Responder
-      </button>
+      <div v-if="!isEditing" class="comment-actions" style="display: flex; gap: 10px; margin-top: 6px;">
+        <button v-if="user" class="reply-btn" @click="emit('reply', postId, comment.id)">
+          ↩ Responder
+        </button>
+
+        <template v-if="user && comment.authorUid === user.uid">
+          <span style="color: var(--border)">|</span>
+          <button @click="startEdit" style="background:none; border:none; color:#3498db; cursor:pointer; font-size:12px; padding:0;">
+            ✏️ Editar
+          </button>
+          <button @click="emit('delete', postId, comment.id, comment.text)" style="background:none; border:none; color:#e74c3c; cursor:pointer; font-size:12px; padding:0;">
+            🗑️ Borrar
+          </button>
+        </template>
+      </div>
     </div>
 
     <CommentNode
       v-for="child in comment.children" 
       :key="child.id"
-      :comment="child" 
-      :post-id="postId" 
+      :comment="child"
+      :post-id="postId"
       :user="user"
-      :comment-input="commentInput" 
+      :comment-input="commentInput"
       :replying-to="replyingTo"
-      :depth="depth + 1" 
+      :depth="depth + 1"
       :get-avatar="getAvatar"
-      @reply="(pid, cid) => emit('reply', pid, cid)"
-      @send="(pid, par) => emit('send', pid, par)"
+      @reply="(pId, cId) => emit('reply', pId, cId)"
+      @send="(pId, text, rId) => emit('send', pId, text, rId)"
+      @edit="(pId, cId, txt) => emit('edit', pId, cId, txt)"
+      @delete="(pId, cId, txt) => emit('delete', pId, cId, txt)"
     />
   </div>
 </template>
