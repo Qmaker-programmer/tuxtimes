@@ -82,6 +82,22 @@ const HASH_VIEWS = {
   '#signin':        'signin',  // especial: solo abre modal, no cambia vista
 };
 
+// ══════════════════════════════════════════════════════════════════
+//  TEMA — dark | light | hc (high contrast)
+//  Se guarda en cookie, no en Firebase. Es preferencia local.
+// ══════════════════════════════════════════════════════════════════
+const THEME_COOKIE = 'tuxtimes_theme';
+const getThemeCookie = () => document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith(THEME_COOKIE+'='))?.split('=')[1] || 'dark';
+const setThemeCookie = (t) => { document.cookie = `${THEME_COOKIE}=${t};max-age=${60*60*24*365};path=/`; };
+
+const currentTheme = ref('dark');
+
+const applyTheme = (t) => {
+  currentTheme.value = t;
+  document.documentElement.setAttribute('data-theme', t);
+  setThemeCookie(t);
+};
+
 // Aplica el hash actual a la navegación.
 // Se llama al montar y cada vez que el hash cambia (botón atrás/adelante).
 // Si el hash no existe en la tabla, asume que es un filtro de tag.
@@ -200,6 +216,8 @@ const authLoading   = ref(false);      // spinner de "por favor espera, Firebase
 //  Si lo llamas dos veces es tu culpa, no nuestra.
 // ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
+  // Cargar tema guardado en cookie
+  applyTheme(getThemeCookie());
   // PASO 1: ¿Venimos de vuelta de un redirect de Google?
   // Cuando el usuario hace login con Google, la página se recarga desde cero.
   // getRedirectResult atrapa el resultado de ese viaje de ida y vuelta.
@@ -1326,6 +1344,26 @@ const deleteComment = async (postId, commentId) => {
               </div>
             </div>
 
+            <!-- TEMA -->
+            <div class="field-group">
+              <label class="field-label">🎨 Tema de la interfaz</label>
+              <div class="theme-picker">
+                <button class="theme-btn" :class="{active:currentTheme==='dark'}" @click="applyTheme('dark')">
+                  <span class="theme-preview theme-preview-dark"></span>
+                  <span>Dark</span>
+                </button>
+                <button class="theme-btn" :class="{active:currentTheme==='light'}" @click="applyTheme('light')">
+                  <span class="theme-preview theme-preview-light"></span>
+                  <span>Light</span>
+                </button>
+                <button class="theme-btn hc-btn" :class="{active:currentTheme==='hc'}" @click="applyTheme('hc')">
+                  <span class="theme-preview theme-preview-hc"></span>
+                  <span>⚡ High Contrast</span>
+                </button>
+              </div>
+              <small class="field-hint">Se guarda en tu navegador, no en la nube 🐧</small>
+            </div>
+
             <div class="field-group">
               <label class="field-label">Tuxnick (apodo)</label>
               <input v-model="settingsNickname" class="settings-input" placeholder="Tu apodo en TuxTimes…" maxlength="30"/>
@@ -1628,6 +1666,47 @@ body{overflow:hidden;background:#080b10}
   --yellow:#eab308;--red:#ef4444;--text:#e2e8f0;--muted:#64748b;--radius:14px;
   font-family:'JetBrains Mono','Fira Code',monospace;color:var(--text)
 }
+
+/* ── TEMA DARK (default) ── */
+[data-theme="dark"]{
+  --bg:#080b10;--surface:#0f1318;--surface2:#161c25;
+  --border:#1e2633;--accent:#3b82f6;--accent-dim:rgba(59,130,246,.15);
+  --yellow:#eab308;--red:#ef4444;--text:#e2e8f0;--muted:#64748b;
+}
+
+/* ── TEMA LIGHT ── */
+[data-theme="light"]{
+  --bg:#f0f4f8;--surface:#ffffff;--surface2:#e8edf2;
+  --border:#cbd5e1;--accent:#2563eb;--accent-dim:rgba(37,99,235,.12);
+  --yellow:#d97706;--red:#dc2626;--text:#1e293b;--muted:#64748b;
+}
+body[data-theme="light"],.shell[data-theme="light"]{ background:var(--bg); }
+[data-theme="light"] .brand-name,[data-theme="light"] .modal-post-title,[data-theme="light"] h1,[data-theme="light"] h2{ color:#0f172a; }
+[data-theme="light"] .post-title{ color:#0f172a; }
+[data-theme="light"] .tux-logo{ filter:drop-shadow(0 0 16px rgba(37,99,235,.3)); }
+
+/* ── TEMA HIGH CONTRAST (VSCodium style 🔵⚡) ── */
+[data-theme="hc"]{
+  --bg:#000000;--surface:#0a0a0a;--surface2:#0d0d0d;
+  --border:#0078d4;--accent:#1aabff;--accent-dim:rgba(26,171,255,.12);
+  --yellow:#ffd700;--red:#ff3333;--text:#ffffff;--muted:#7ec8e3;
+}
+[data-theme="hc"] .post-card{ border-color:#0078d4;box-shadow:0 0 0 1px #0078d4; }
+[data-theme="hc"] .post-card:hover{ border-color:#1aabff;box-shadow:0 0 16px rgba(26,171,255,.4); }
+[data-theme="hc"] .sidebar{ border-right-color:#0078d4; }
+[data-theme="hc"] .tux-logo{ filter:drop-shadow(0 0 20px rgba(26,171,255,.8)); }
+[data-theme="hc"] .nav-item.active{ background:rgba(26,171,255,.15);color:#1aabff;box-shadow:inset 2px 0 0 #1aabff; }
+[data-theme="hc"] .brand-name{ color:#1aabff;text-shadow:0 0 20px rgba(26,171,255,.5); }
+[data-theme="hc"] .modal-post,[data-theme="hc"] .modal-author{ border-color:#0078d4;box-shadow:0 0 40px rgba(26,171,255,.2); }
+[data-theme="hc"] .auth-modal,[data-theme="hc"] .delete-modal{ border-color:#0078d4; }
+[data-theme="hc"] .publish-btn{ box-shadow:0 0 12px rgba(26,171,255,.4); }
+[data-theme="hc"] .search-bar{ border-color:#0078d4; }
+[data-theme="hc"] .search-bar:focus-within{ border-color:#1aabff;box-shadow:0 0 12px rgba(26,171,255,.3); }
+[data-theme="hc"] .octocat-badge{ border-color:#0078d4; }
+[data-theme="hc"] .tag{ border-color:#0078d4;color:#1aabff; }
+[data-theme="hc"] .comment-bubble{ border-color:#0078d4; }
+[data-theme="hc"] *:focus-visible{ outline:2px solid #1aabff; }
+
 .shell{display:flex;height:100vh;width:100vw;overflow:hidden}
 
 /* ── SIDEBAR ─── */
@@ -1663,7 +1742,18 @@ body{overflow:hidden;background:#080b10}
 .login-btn:hover{filter:brightness(1.15)}
 .logout-btn{display:flex;align-items:center;gap:8px;width:100%;padding:10px 14px;background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.25);border-radius:10px;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
 .logout-btn:hover{background:rgba(239,68,68,.22);border-color:rgba(239,68,68,.5)}
+.logout-btn:hover{background:rgba(239,68,68,.22);border-color:rgba(239,68,68,.5)}
 
+/* ── THEME PICKER ── */
+.theme-picker{display:flex;gap:10px;flex-wrap:wrap}
+.theme-btn{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--muted);cursor:pointer;font-size:.8rem;font-weight:600;font-family:inherit;transition:all .2s}
+.theme-btn:hover{border-color:var(--accent);color:var(--text)}
+.theme-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.theme-preview{width:20px;height:20px;border-radius:6px;border:1px solid var(--border);flex-shrink:0}
+.theme-preview-dark{background:linear-gradient(135deg,#080b10 50%,#3b82f6 50%)}
+.theme-preview-light{background:linear-gradient(135deg,#f0f4f8 50%,#2563eb 50%)}
+.theme-preview-hc{background:linear-gradient(135deg,#000 50%,#1aabff 50%);border-color:#0078d4;box-shadow:0 0 6px rgba(26,171,255,.5)}
+.hc-btn.active{border-color:#1aabff;color:#1aabff;background:rgba(26,171,255,.1);box-shadow:0 0 10px rgba(26,171,255,.3)}
 /* ── MAIN ─── */
 .main{flex:1;overflow-y:auto;background:var(--bg)}
 .feed-section{padding:28px 32px}
