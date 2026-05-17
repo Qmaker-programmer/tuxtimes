@@ -250,11 +250,11 @@ onMounted(async () => {
 // Login con Google usando Popup.
 // Volvemos a los Popups porque Google Cloud se puso en modo burócrata con sus URIs de redirección.
 // Sí, Chrome odia los popups y te va a meter un candado, pero prefiero que el usuario aprenda
-// a hacer un clic arriba a la derecha antes de volver a tocar una consola de Google OAuth.
 const loginGoogle = async () => {
   authError.value = '';
   try {
-    await signInWithPopup(auth, provider); 
+    await signInWithPopup(auth, provider);
+    showAuthModal.value = false; // ← ESTA LÍNEA. Era todo. Un línea. 🐧
   } catch (error) {
     // 🚨 HACK DE INSPECCIÓN: Esto nos va a decir el código real en la consola F12
     console.error("ERROR DE FIREBASE DETECTADO:", error);
@@ -1525,9 +1525,9 @@ const deleteComment = async (postId, commentId) => {
           </div>
           <div v-if="authError" class="auth-error">{{ authError }}</div>
           <div class="auth-form">
-            <input v-if="authMode==='register'" v-model="authName" class="auth-input" placeholder="Tu nombre…" @keydown.enter="registerEmail"/>
-            <input v-model="authEmail" class="auth-input" type="email" placeholder="Correo electrónico…" @keydown.enter="authMode==='login'?loginEmail():registerEmail()"/>
-            <input v-model="authPassword" class="auth-input" type="password" placeholder="Contraseña…" @keydown.enter="authMode==='login'?loginEmail():registerEmail()"/>
+            <input v-if="authMode==='register'" v-model="authName" class="auth-input" placeholder="Tu nombre completo" @keydown.enter="registerEmail"/>
+            <input v-model="authEmail" class="auth-input" type="email" placeholder="ejemplo@correo.com" @keydown.enter="authMode==='login'?loginEmail():registerEmail()"/>
+            <input v-model="authPassword" class="auth-input" type="password" placeholder="Contraseña de correo" @keydown.enter="authMode==='login'?loginEmail():registerEmail()"/>
             <button class="publish-btn" style="width:100%;justify-content:center" :disabled="authLoading" @click="authMode==='login'?loginEmail():registerEmail()">
               {{ authLoading?'Cargando…':(authMode==='login'?'Entrar':'Crear cuenta') }}
             </button>
@@ -1926,16 +1926,203 @@ body{overflow:hidden;background:#080b10}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px}
 ::-webkit-scrollbar-thumb:hover{background:var(--accent)}
 
+/* ══════════════════════════════════════════════════════════════════
+   RESPONSIVE PATCH — TuxTimes
+   Reemplaza el bloque /* ── RESPONSIVE ─── */ al final de tu <style>
+   ══════════════════════════════════════════════════════════════════ */
+
 /* ── RESPONSIVE ─── */
-@media(max-width:768px){
-  .shell{flex-direction:column}
-  .sidebar{width:100%;min-width:unset;flex-direction:row;flex-wrap:wrap;height:auto}
-  .sidebar-section{display:none}
-  .main{flex:1}
-  .feed-section,.editor-section,.settings-section{padding:16px}
-  .posts-grid{grid-template-columns:1fr}
-  .split{grid-template-columns:1fr;height:auto}
-  .modal-overlay{inset:0}
-  .modal-post,.modal-author{padding:20px 16px}
+
+/* ── TABLETS (≤ 900px) ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  :root { --sidebar-w: 220px; }
+
+  .posts-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .feed-section { padding: 20px 20px; }
+  .editor-section, .settings-section { padding: 20px; }
+  .modal-post, .modal-author { padding: 28px 28px; }
+}
+
+/* ── MÓVIL (≤ 768px) ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* FIX CRÍTICO: body overflow hidden congela el scroll en iOS */
+  body { overflow: hidden; }
+  html, body, #app { height: 100%; height: 100dvh; } /* dvh = viewport dinámico (teclado virtual) */
+
+  /* Shell: sidebar arriba, contenido abajo */
+  .shell { flex-direction: column; height: 100dvh; }
+
+  /* ── SIDEBAR MÓVIL: barra horizontal compacta ── */
+  .sidebar {
+    width: 100%;
+    min-width: unset;
+    flex-direction: row;
+    align-items: center;
+    height: auto;
+    min-height: 56px;
+    padding: 0 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-shrink: 0;
+    gap: 6px;
+    /* Ocultar scrollbar horizontal pero permitir scroll */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+
+  /* Brand: solo logo + nombre, inline */
+  .sidebar-brand {
+    flex-direction: row;
+    align-items: center;
+    padding: 0;
+    border-bottom: none;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-right: 8px;
+  }
+  .tux-logo { width: 32px; height: 32px; }
+  .brand-name { font-size: .95rem; white-space: nowrap; }
+  .brand-badge { display: none; } /* Muy pequeño en móvil */
+
+  /* Nav: iconos en fila sin texto */
+  .sidebar-nav {
+    flex-direction: row;
+    padding: 0;
+    gap: 2px;
+    border-bottom: none;
+    flex-shrink: 0;
+  }
+  .nav-item {
+    padding: 8px 10px;
+    font-size: 0; /* Oculta el texto */
+    gap: 0;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  .nav-item svg { width: 20px; height: 20px; } /* Iconos más grandes sin texto */
+
+  /* Ocultar secciones que no caben */
+  .sidebar-section { display: none; }
+
+  /* Footer de usuario: compacto al final de la barra */
+  .sidebar-footer {
+    margin-top: 0;
+    margin-left: auto;
+    padding: 0;
+    border-top: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .sidebar-footer-user { padding: 4px; border-radius: 50%; }
+  .user-info { display: none; } /* Solo avatar */
+  .settings-icon-small { display: none; }
+  .avatar { width: 32px; height: 32px; border-width: 1px; }
+
+  .login-btn {
+    padding: 6px 12px;
+    font-size: .75rem;
+    white-space: nowrap;
+    width: auto;
+  }
+  .logout-btn {
+    padding: 6px 10px;
+    font-size: 0; /* Solo ícono */
+    width: auto;
+  }
+  .logout-btn svg { width: 16px; height: 16px; }
+
+  /* ── MAIN ── */
+  .main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ── FEED ── */
+  .feed-section { padding: 14px 12px; }
+  .posts-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .post-card { padding: 16px; gap: 10px; }
+  .post-title { font-size: .95rem; }
+  .post-content { font-size: .8rem; max-height: 70px; }
+
+  /* ── EDITOR ── */
+  .editor-section { padding: 14px 12px; }
+  .split { grid-template-columns: 1fr; height: auto; }
+  .editor-pane, .preview-pane { min-height: 300px; }
+  .md-toolbar { flex-wrap: wrap; gap: 4px; }
+  .md-tool-btn { padding: 4px 7px; font-size: .72rem; }
+
+  /* ── SETTINGS ── */
+  .settings-section { padding: 14px 12px; }
+
+  /* ── MODAL OVERLAY: ocupa toda la pantalla en móvil ── */
+  .modal-overlay { inset: 0; padding: 0; align-items: flex-end; }
+  .modal-post, .modal-author {
+    padding: 20px 16px;
+    border-radius: 20px 20px 0 0; /* Sube desde abajo como un sheet */
+    max-height: 92dvh;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* ── AUTH MODAL ── */
+  .auth-modal {
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 16px;
+  }
+
+  /* ── DELETE MODAL ── */
+  .delete-modal {
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 16px;
+  }
+
+  /* ── TUXPIT: más pequeño y no tapa contenido ── */
+  .tuxpit {
+    bottom: 12px;
+    right: 12px;
+    gap: 6px;
+  }
+  .tuxpit-img { width: 48px; height: 48px; }
+  .tuxpit-bubble {
+    max-width: 160px;
+    font-size: .75rem;
+    padding: 10px 12px;
+  }
+
+  /* ── WINDOWS EGG: ocupa todo sin sidebar ── */
+  .windows-egg-overlay { inset: 0; }
+
+  /* ── BÚSQUEDA ── */
+  .search-bar { padding: 10px 14px; }
+  .search-input { font-size: .85rem; }
+}
+
+/* ── MÓVIL PEQUEÑO (≤ 390px — iPhone SE, Galaxy A) ────────────── */
+@media (max-width: 390px) {
+  .feed-section { padding: 10px 10px; }
+  .post-card { padding: 13px; }
+  .post-title { font-size: .88rem; }
+  .tux-logo { width: 28px; height: 28px; }
+  .brand-name { font-size: .82rem; }
+  .nav-item { padding: 6px 8px; }
+  .nav-item svg { width: 18px; height: 18px; }
+  .tuxpit-bubble { display: none; } /* En pantallas muy chicas, solo el pingüino */
+}
+
+/* ── FIX: teclado virtual en iOS/Android ───────────────────────── */
+/* Cuando aparece el teclado, el viewport se encoge. Con dvh no nos desbarajustamos */
+@supports (height: 100dvh) {
+  .shell { height: 100dvh; }
+  .modal-post, .modal-author { max-height: 85dvh; }
 }
 </style>
