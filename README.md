@@ -1,291 +1,542 @@
+<div align="center">
+
+```
+████████╗██╗   ██╗██╗  ██╗    ████████╗██╗███╗   ███╗███████╗███████╗
+╚══██╔══╝██║   ██║╚██╗██╔╝       ██╔══╝██║████╗ ████║██╔════╝██╔════╝
+   ██║   ██║   ██║ ╚███╔╝        ██║   ██║██╔████╔██║█████╗  ███████╗
+   ██║   ██║   ██║ ██╔██╗        ██║   ██║██║╚██╔╝██║██╔══╝  ╚════██║
+   ██║   ╚██████╔╝██╔╝ ██╗       ██║   ██║██║ ╚═╝ ██║███████╗███████║
+   ╚═╝    ╚═════╝ ╚═╝  ╚═╝       ╚═╝   ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝
+```
+
 # 🐧 TuxTimes
 
-> **El periódico de la comunidad Linux. Hecho con amor, código y mucho café.**
-> Licenciado bajo GPLv2 — porque el software libre no es una opción, es una forma de vida.
+### *El lector de noticias Linux que nació de la rabia pura y el odio a los paywalls arcaicos*
+
+[![Vue 3](https://img.shields.io/badge/Vue-3.x-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white)](https://vuejs.org/)
+[![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![GPLv2](https://img.shields.io/badge/Licencia-GPLv2-red?style=for-the-badge&logo=gnu&logoColor=white)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
+[![LWN](https://img.shields.io/badge/Anti--Paywall-LWN.net%20%F0%9F%96%95-orange?style=for-the-badge)](https://lwn.net)
+[![Estado](https://img.shields.io/badge/Estado-Prod%20pero%20sin%20pagiaci%C3%B3n-critical?style=for-the-badge)](.)
+[![Builds](https://img.shields.io/badge/Builds-Solo%20cuando%20quiere-lightgrey?style=for-the-badge)](.)
+
+<br/>
+
+> *"Nació porque estaba enojado con páginas con paywalls arcaicos (te hablo a ti → lwn.net ←)"*
+> 
+> — El autor, comentario en el código, línea 8
+
+<br/>
+
+🐧 **Un pengüino rebelde · Una app de Vue · Un grito de independencia informativa** 🐧
+
+</div>
 
 ---
 
-## 📋 Tabla de Contenidos
+## 📖 ¿Qué es TuxTimes?
 
-1. [¿Qué es TuxTimes?](#qué-es-tuxtimes)
-2. [Características](#características)
-3. [Stack Tecnológico](#stack-tecnológico)
-4. [Requisitos](#requisitos)
-5. [Instalación y Configuración](#instalación-y-configuración)
-6. [Firebase Setup](#firebase-setup)
-7. [Estructura del Proyecto](#estructura-del-proyecto)
-8. [Características Especiales](#características-especiales)
-9. [Atajos de Teclado](#atajos-de-teclado)
-10. [Easter Eggs](#easter-eggs)
-11. [Contribuir](#contribuir)
-12. [Licencia](#licencia)
+TuxTimes es una plataforma de noticias y artículos sobre Linux y software libre, construida con **Vue 3 + Firebase**, que nació de un momento de frustración completamente comprensible:
+
+> *LWN.net, el legendario e historicamente arcaico portal de noticias del kernel Linux, lleva décadas siendo uno de los recursos más valiosos de la comunidad libre... escondido detrás de un paywall que parece diseñado en 1998 y actualizado nunca.*
+
+Así que alguien dijo **"suficiente"**, abrió el editor, y construyó TuxTimes. Todo en un solo `App.vue` de 1900+ líneas. **¿Por qué?** Porque estaba enojado. **¿Funciona?** Perfectamente. **¿Es buena arquitectura?** El autor lo sabe. El autor no pregunta.
+
+La licencia es **GPLv2**. También por enojo.
 
 ---
 
-## ¿Qué es TuxTimes?
+## 🌐 El Contexto Histórico: LWN.net y el Gran Paywall del Kernel
 
-TuxTimes es una plataforma de noticias y artículos técnicos centrada en el ecosistema Linux y el
-software libre. Pensada para que la comunidad comparta conocimiento: desde parches del kernel hasta
-consejos de seguridad, pasando por reviews de distros y tutoriales de bash.
+Para entender TuxTimes, hay que entender a su némesis: **LWN.net**.
 
-Cualquier usuario puede leer. Solo los que inician sesión pueden publicar, comentar y dar estrellas.
+### 📜 Historia de LWN (contada con todo el respeto que se merece, que es mucho, pero aún así)
+
+**LWN.net** (*Linux Weekly News*) es uno de los portales de noticias técnicas sobre el kernel Linux más respetados del planeta. Desde **1998**. Sí, lleva más años en internet que la mayoría de sus lectores en el mercado laboral.
+
+```
+1998 ─────────────────────────────────────────────────────── HOY
+ │                                                              │
+ └─ LWN nace          LWN sigue igual de arcaico ─────────────┘
+    Google no existe   (el CSS tampoco ha cambiado mucho)
+```
+
+**Lo que LWN hace bien:**
+
+- Cobertura técnica **profundísima** del kernel Linux
+- Artículos sobre FOSS, seguridad, distribuciones
+- Reportajes que NADIE más hace con esa profundidad
+- Una comunidad de comentaristas absolutamente brillante
+- Existe y sobrevive desde antes que muchos frameworks JS
+
+**Lo que LWN hace... así:**
+
+- Paywall de suscripción ($7/mes o $35/año)
+- Los artículos se liberan UNA SEMANA DESPUÉS de publicarse
+- La interfaz web podría haber sido diseñada por un monje benedictino en el año 2003
+- El CSS parece escrito directamente en piedra
+- No hay dark mode (el crimine supremo)
+- Los comentarios tienen IDs numéricos de 7 cifras como en el año del señor
+
+### 🤔 ¿LWN es malo entonces?
+
+**NO.** LWN es genuinamente excelente. Jonathan Corbet y compañía hacen un trabajo periodístico sobre el mundo Linux que es irreemplazable. Merecen ser pagados. El contenido justifica la suscripción.
+
+El problema es que en el año 2024+, una plataforma que:
+
+- No tiene modo oscuro
+- Requiere suscripción para leer artículos de la semana
+- Tiene la UX de una página PHP de 2001
+- No es fácilmente navegable sin bookmarks manuales
+
+...genera en ciertos desarrolladores una reacción alérgica que solo puede resolverse con **código**, **café**, y **una licencia GPLv2 por pura coherencia ideológica**.
+
+TuxTimes es esa reacción alérgica. Y es gloriosa.
 
 ---
 
-## Características
+## ✨ Features (o: "lo que hace mientras Firebase no cobra demasiado")
 
-### 📰 Tuxposts (Artículos)
-- Redacción completa en **Markdown** con editor split-screen (escritura + preview en tiempo real)
-- Barra de herramientas Markdown visual: negrita, cursiva, headings, listas, código, links e imágenes
-- **Categorías técnicas** (20+): Gestión de Memoria, Virus & Malware, Kernel & Syscalls, Docker, IA, etc.
-- **Tags** predefinidos y personalizados para cada Tuxpost
-- Vista expandida del Tuxpost al hacer clic — ocupa todo el espacio disponible con animación
-- Los autores pueden **editar** y **borrar** sus propios Tuxposts
-- Borrado con confirmación de seguridad: debes escribir el título exacto para confirmar
-- Usuarios no-autores pueden dar ⭐ **estrella** a los Tuxposts que les gusten
+### 🏠 Feed Principal
 
-### 🔍 Búsqueda y Filtros
-- **Barra de búsqueda** en tiempo real: filtra por título, autor, categoría y tags
-- **Easter Egg**: busca "windows" y descubre algo 😏
-- Filtro por categoría desde la sidebar
+- **Grid de posts** con tarjetas visuales, categorías y tags
+- **Búsqueda inteligente** que soporta texto libre + `#tags` en la misma query
+- **Filtro por categorías** múltiples simultáneas (AND lógico entre categorías, OR entre textos)
+- Ordenamiento por fecha (más nuevo primero, siempre)
 
-### 👤 Perfiles de Autor
-- Vista de perfil completa al hacer clic en el autor de cualquier Tuxpost
-- Muestra: foto, apodo (Tuxnick), bio, URL personalizada, estrellas totales y todos sus Tuxposts
-- Cuadrícula de Tuxposts del autor — clic en cualquiera para abrirlo (navegación en pila)
+### 🥚 Easter Egg: El BSOD de Linux
 
-### 🗺️ Navegación en Pila (History Stack)
-- Cada acción (abrir post, ver autor, abrir post desde autor) se apila como el historial del navegador
-- Botón **Volver** y tecla **Escape** retroceden un nivel
-- Breadcrumb visible cuando hay más de 2 niveles de profundidad
-- Al ir a Configuración, Nuevo Tuxpost, etc., se limpia la pila automáticamente
+Busca `windows` en el buscador. Te lo mereces.
 
-### 💬 Comentarios Recursivos (Árbol Infinito)
-- Cada Tuxpost tiene sección de comentarios al expandirlo
-- Puedes **responder a cualquier comentario**, formando un árbol de profundidad infinita
-- Indentación visual por nivel (máx. visual: 5 niveles, estructura sin límite)
-- Atajo de teclado: **Ctrl+Enter** para enviar comentario
-
-### ⭐ Favoritos
-- Sección **Favoritos** en la sidebar (solo visible si tienes sesión)
-- Lista todos los Tuxposts a los que diste estrella
-- Persistido en Firestore por usuario
-
-### ⚙️ Configuración de Cuenta
-- **Tuxnick**: apodo que reemplaza tu nombre real en la plataforma
-- **Bio / Descripción**: texto libre visible en tu perfil público
-- **URL personalizada**: `tuxtimes.tux/tu-nombre`
-- **Privacidad**:
-  - Ocultar correo electrónico del perfil público
-  - Ocultar nombre real (solo se muestra el Tuxnick)
-- **Avatar personalizable**: sube tu propia imagen de perfil
-- Clic en tu cuenta en la sidebar → va directo a Configuración
+```javascript
+// EASTER EGG: si el usuario busca "windows" → BSoD de Linux. porque somos así.
+// (si alguien reporta esto como bug, es que no entiende la cultura)
+watch(searchQuery, (v) => { showWindowsEgg.value = v.toLowerCase().includes('windows'); });
+```
 
 ### 🔐 Autenticación
-- **Google** OAuth con un clic
-- **Email + Contraseña** para los puristas que no quieren dar sus datos a Google 🐧
-- Modal de login elegante con ambas opciones
 
----
+- **Google OAuth** via popup (COOP que llore lo que quiera)
+- **Email + contraseña** con registro y login tradicional
+- **Perfil de usuario** con bio, foto, URL personalizada, nickname
+- Modo "esconder email" porque la privacidad existe
+- Validaciones de contraseña débil ("mín. 6 car. 🐧")
 
-## Stack Tecnológico
+### ✍️ Editor de Posts
 
-| Tecnología | Versión | Uso |
-|---|---|---|
-| **Vue 3** | ^3.5 | Framework frontend (Composition API + `<script setup>`) |
-| **Vite** | ^8.0 | Build tool y dev server ultrarrápido |
-| **Firebase** | ^12.0 | Auth, Firestore (base de datos), Storage (avatares) |
-| **marked** | ^18.0 | Renderizado de Markdown a HTML |
-| **GPLv2** | — | Licencia del proyecto |
+- **Markdown completo** renderizado en tiempo real con `marked`
+- **Preview side-by-side** (split view) mientras escribes
+- **Borrador persistente** en `localStorage` para el usuario que cierra la pestaña sin querer (todos lo hemos hecho)
+- Soporte de categorías y tags
+- Edición de posts existentes con historial de cambios
 
----
+### 💬 Sistema de Comentarios (la obra de ingeniería más dramática)
 
-## Requisitos
+El sistema de comentarios merece su propio apartado porque es, honestamente, notable:
 
-- **Node.js** 20+ (recomendado: usar `nvm`)
-- **npm** 9+ o **pnpm** 8+
-- Cuenta en **Firebase** (plan Spark gratuito es suficiente para empezar)
-- Navegador moderno (Chrome, Firefox, Librewolf, etc. — no IE, obviamente 🐧)
-
----
-
-## Instalación y Configuración
-
-```bash
-# 1. Clona el repositorio
-git clone https://github.com/tu-usuario/tuxtimes.git
-cd tuxtimes
-
-# 2. Instala dependencias
-npm install
-
-# 3. Copia las variables de entorno
-cp .env.example .env
-
-# 4. Edita .env con tus credenciales de Firebase
-#    (ver sección Firebase Setup abajo)
-
-# 5. Inicia el servidor de desarrollo
-npm run dev
-
-# 6. Build para producción
-npm run build
-
-# 7. Preview del build
-npm run preview
+```
+Comentario raíz
+├── Respuesta A (depth: 1)
+│   ├── Respuesta A1 (depth: 2)
+│   │   └── Respuesta A1a (depth: 3) ← hasta depth 5, luego se aplana
+│   └── [Este comentario fue eliminado] ← soft-delete preservando el árbol
+│       └── Respuesta A2 (hijo de fantasma, sigue vivo)
+└── Respuesta B
 ```
 
----
+**El Algoritmo de Poda de Fantasmas™** (línea 688 del código):
 
-## Firebase Setup
+Cuando borras un comentario que tiene respuestas:
 
-### 1. Crear proyecto
+1. Si tiene hijos vivos → **soft delete**: convierte en `[Este comentario ha sido eliminado por el autor]`
+2. Si no tiene hijos → **purga física** de Firestore
+3. **Recolector de basura en cascada reversa**: sube por el árbol eliminando padres fantasmas que ya no tienen descendencia útil
 
-1. Ve a [console.firebase.google.com](https://console.firebase.google.com)
-2. Crea un proyecto nuevo (nombre sugerido: `tuxtimes`)
-3. Desactiva Google Analytics si no la necesitas
-
-### 2. Habilitar Authentication
-
-1. Authentication → Sign-in method
-2. Habilita **Google**
-3. Habilita **Email/Password**
-
-### 3. Crear Firestore
-
-1. Firestore Database → Crear base de datos
-2. Empieza en **modo producción**
-3. Elige la región más cercana a tus usuarios
-
-### 4. Configurar Storage (para avatares)
-
-1. Storage → Comenzar
-2. Configura las reglas (ver más abajo)
-
-### 5. Reglas de Firestore
-
-Copia las reglas del archivo `firestore.rules` incluido en el repositorio.
-Las reglas garantizan que:
-- Cualquiera puede leer posts y perfiles
-- Solo usuarios autenticados pueden crear posts con su propio UID
-- Solo el autor puede editar/borrar sus posts
-- Cada usuario solo puede escribir su propio perfil
-
-### 6. Variables de entorno
-
-Crea un archivo `.env` en la raíz:
-
-```env
-VITE_FIREBASE_API_KEY=tu_api_key
-VITE_FIREBASE_AUTH_DOMAIN=tuxtimes.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=tuxtimes
-VITE_FIREBASE_STORAGE_BUCKET=tuxtimes.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
-VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+```javascript
+// RECOLECTOR DE BASURA EN CASCADA REVERSA (Limpieza de ancestros fantasmas)
+let currentParentId = currentComment?.parentId;
+while (currentParentId) {
+  // Si el padre ya era fantasma y no le quedó nada útil... ¡exterminado!
+  if (!parentHasLiveChildren) {
+    await deleteDoc(parentRef);
+    currentParentId = parentNode.parentId; // subimos un nivel más
+    continue;
+  }
+  break; // si el padre está vivo, nos detenemos
+}
 ```
 
+Es el sistema de gestión de comentarios más cuidadoso que vas a encontrar en un proyecto Vue personal. Sin excepción.
+
+### ⭐ Sistema de Favoritos
+
+- Guarda posts con estrella en Firestore
+- Feed dedicado de favoritos con los mismos filtros del feed principal
+- `arrayUnion` / `arrayRemove` de Firestore para concurrencia correcta
+
+### 👤 Perfiles de Autor
+
+- Perfil público con posts del autor
+- Mini grid de sus publicaciones
+- Contador total de estrellas recibidas
+- Accesible directamente desde cualquier post
+
+### 🗺️ Enrutamiento por Hash
+
+Sin React Router. Sin Vue Router. Solo `window.location.hash` y orgullo.
+
+| Hash                   | Vista                           |
+| ---------------------- | ------------------------------- |
+| `#reciente` o `#feed`  | Feed principal                  |
+| `#configuracion`       | Ajustes de cuenta               |
+| `#favoritos`           | Posts guardados                 |
+| `#mistuxpost`          | Mis publicaciones               |
+| `#nuevopost`           | Editor                          |
+| `#signin`              | Modal de login                  |
+| `#post-{ID}`           | Post específico (¡compartible!) |
+| `#cualquier-otra-cosa` | Filtra el feed por ese tag      |
+
+> *"React Router llorando en un rincón. Ventaja: sin SSR, sin 404s, sin drama. Solo un # y listo."*
+> 
+> — Comentario en el código, línea 59
+
+### 🗑️ Borrado con Confirmación
+
+Para borrar un post, el usuario debe escribir el **título exacto**. 
+
+```
+¿Seguro que quieres borrar "Compilando el kernel a las 3am"?
+Escribe el título exactamente: [________________]
+                                ↑ sí, molesto a propósito
+```
+
+No se puede pegar. No hay atajo. Así de deliberado es el borrado.
+
+### 🤖 TuxPit (el asistente pingüino)
+
+Un pingüino flotante en la esquina que aparece con mensajes contextuales. Bouncea infinitamente. No tiene vergüenza.
+
 ---
 
-## Estructura del Proyecto
+## 🏗️ Arquitectura (o: "todo en un archivo, no preguntes")
 
 ```
 tuxtimes/
-├── public/
-│   ├── tux.png              # Mascota principal 🐧
-│   ├── tuxsobrero.gif       # Easter egg del sombrero 🎩
-│   └── tuxpc.gif            # Tux en la PC
 ├── src/
-│   ├── App.vue              # Componente raíz (toda la app)
-│   ├── firebase.js          # Configuración de Firebase
-│   ├── main.js              # Entry point
-│   └── style.css            # Estilos globales (reset)
-├── index.html               # HTML principal
-├── vite.config.js           # Configuración de Vite
-├── package.json
-├── firestore.rules          # Reglas de seguridad Firestore
-└── README.md                # Este archivo 🐧
+│   ├── App.vue              ← TODO. 1900+ líneas. El monolito supremo.
+│   │                           CSS incluido. Lógica incluida. Dignidad: negociable.
+│   ├── components/
+│   │   └── CommentNode.vue  ← El componente recursivo. Se llama a sí mismo.
+│   │                           Sí, da miedo. No, no está roto (ahora).
+│   └── firebase.js          ← La santísima trinidad: auth, provider, db
+├── public/
+│   └── tux.png              ← El señor Tux. El verdadero MVP.
+└── package.json
+```
+
+### Stack Tecnológico
+
+| Tecnología        | Versión         | Por qué                                                   |
+| ----------------- | --------------- | --------------------------------------------------------- |
+| **Vue 3**         | Composition API | Porque Options API es 2020                                |
+| **Firebase Auth** | v9 modular      | Google OAuth sin servidores propios                       |
+| **Firestore**     | NoSQL           | La BD que cobra por query (⚠️ no hagas queries en bucles) |
+| **marked**        | latest          | Markdown → HTML. Magia negra controlada.                  |
+| **Vite**          | latest          | Porque webpack es un recuerdo doloroso                    |
+| **GPLv2**         | la original     | Por coherencia ideológica y enojo                         |
+
+### Modelo de Datos en Firestore
+
+```
+firestore/
+├── posts/
+│   └── {postId}/
+│       ├── title, content, category, tags[]
+│       ├── author, authorUid, authorPhoto
+│       ├── createdAt, updatedAt
+│       ├── stars[] (UIDs que dieron estrella)
+│       └── comments/           ← subcolección
+│           └── {commentId}/
+│               ├── text, author, authorUid
+│               ├── parentId (null = raíz)
+│               ├── createdAt, editedAt
+│               └── isDeleted (soft-delete flag)
+└── profiles/
+    └── {uid}/
+        ├── displayName, photoURL, bio
+        ├── nickname, customUrl
+        └── hideEmail, hideName
 ```
 
 ---
 
-## Características Especiales
+## 🚀 Instalación y Configuración
 
-### 🐧📎 Tuxpit (Easter Egg — homenaje a Clippit)
+- Node.js 18+
+- Una cuenta de Firebase (gratis tier suficiente para empezar)
+- Ganas de contribuir a la causa anti-paywall
+- Opcional: rabia acumulada contra LWN (mejora el rendimiento del developer)
 
-Al empezar a escribir tu primer Tuxpost, aparece **Tuxpit** en la esquina inferior derecha:
-> *"Parece que estás escribiendo un Tuxpost... ¿Quieres que te ayude? 🐧"*
-
-Es un guiño directo al infame asistente de Microsoft Office. Excepto que Tuxpit corre en Linux.
-
-### 🎩 Tux con Sombrero
-
-Haz clic en el logo de Tux en la sidebar. Solo una vez. Solo por un momento. Ya sabes qué pasa.
-
-### 🪟 Easter Egg de Windows
-
-Escribe "windows" en la barra de búsqueda. TuxTimes tiene una opinión muy clara al respecto.
-
----
-
-## Atajos de Teclado
-
-| Atajo | Acción |
-|---|---|
-| `Escape` | Cerrar modal / Retroceder en la pila de navegación |
-| `Ctrl + Enter` | Enviar comentario |
-| `Alt + ←` | (navegador) Retroceder |
-| `Alt + →` | (navegador) Avanzar |
-
-En el editor Markdown, todos los botones de la toolbar aplican al texto seleccionado.
-
----
-
-## Easter Eggs
-
-| Easter Egg | Cómo activarlo |
-|---|---|
-| 🎩 Tux con sombrero | Clic en el logo de Tux en la sidebar |
-| 🐧📎 Tuxpit | Escribe la primera letra en el editor de Tuxpost |
-| 🪟 Error 404 Windows | Busca "windows" en el buscador de Tuxposts |
-
----
-
-## Contribuir
-
-TuxTimes es software libre. Las contribuciones son bienvenidas:
+### Setup
 
 ```bash
-# Haz un fork, crea tu rama
-git checkout -b feature/mi-nueva-feature
+# Clonar el repositorio
+git clone https://github.com/Qmaker-programmer/tuxtimes.git
+cd tuxtimes
 
-# Haz tus cambios, commitea
-git commit -m "feat: añadir soporte para LaTeX en posts"
+# Instalar dependencias
+npm install
 
-# Push y abre un Pull Request
-git push origin feature/mi-nueva-feature
+# Configurar Firebase (crea src/firebase.js)
+cp src/firebase.example.js src/firebase.js
+# Edita con tus credenciales de Firebase Console
 ```
 
-Por favor mantén el código limpio, comentado y en español donde sea posible.
-Los commits en inglés también están bien (convención estándar).
+### Configuración de Firebase (`src/firebase.js`)
+
+```javascript
+import { initializeApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+
+const firebaseConfig = {
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_PROJECT.firebaseapp.com",
+  projectId: "TU_PROJECT_ID",
+  storageBucket: "TU_PROJECT.appspot.com",
+  messagingSenderId: "TU_SENDER_ID",
+  appId: "TU_APP_ID"
+};
+
+const app      = initializeApp(firebaseConfig);
+export const auth     = getAuth(app);
+export const provider = new GoogleAuthProvider();
+export const db       = getFirestore(app);
+```
+
+### Reglas de Firestore recomendadas
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ══════════════════════════════════════════════════════════════
+    //  HELPER FUNCTIONS
+    // ══════════════════════════════════════════════════════════════
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    function isCreatingOwnPost() {
+      return isAuth() && request.resource.data.authorUid == request.auth.uid;
+    }
+
+    function isPostOwner() {
+      return isAuth() && resource.data.authorUid == request.auth.uid;
+    }
+
+    function onlyStarsChanged() {
+      return request.resource.data.keys().hasOnly(['stars']) 
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stars']);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  PERFILES DE USUARIO
+    // ══════════════════════════════════════════════════════════════
+    match /profiles/{userId} {
+      allow read: if true;
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+            'uid', 'displayName', 'photoURL', 'nickname',
+            'bio', 'customUrl', 'hideEmail', 'hideName',
+            'avatarUrl', 'createdAt', 'updatedAt'
+          ]);
+      allow delete: if isOwner(userId);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  POSTS / TUXPOSTS
+    // ══════════════════════════════════════════════════════════════
+    match /posts/{postId} {
+      allow read: if true;
+
+      allow create: if isCreatingOwnPost()
+        && request.resource.data.keys().hasAll(['title', 'content', 'authorUid', 'author', 'createdAt'])
+        && request.resource.data.stars == [];
+
+      allow update: if isPostOwner() 
+        || (isAuth() && onlyStarsChanged());
+
+      allow delete: if isPostOwner();
+
+      // ══════════════════════════════════════════════════════════
+      //  COMENTARIOS (subcolección)
+      // ══════════════════════════════════════════════════════════
+      match /comments/{commentId} {
+        allow read: if true;
+
+        // Crear: Obligatorio estar logueado y que el autor coincida con tu UID
+        allow create: if isAuth()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.text != null
+          && request.resource.data.text.trim().size() > 0;
+
+        // Actualizar: El autor puede modificar su texto O realizar un soft-delete
+        allow update: if isAuth()
+          && resource.data.authorUid == request.auth.uid 
+          && (
+            // CASO 1: Edición normal de Markdown (se mantiene el UID)
+            (
+              request.resource.data.authorUid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+            ) 
+            || 
+            // CASO 2: Borrado lógico comunitario (El Pingüino pasa a null)
+            (
+              request.resource.data.isDeleted == true
+              && request.resource.data.authorUid == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasAny(['text', 'isDeleted', 'author', 'authorUid', 'authorPhoto'])
+            )
+          );
+          
+        // 🔥 BORRAR CORREGIDO: Permite borrar si eres el dueño original O si el nodo ya es un residuo fantasma
+        allow delete: if isAuth() && (
+          resource.data.authorUid == request.auth.uid || 
+          resource.data.isDeleted == true
+        );
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+### Ejecutar en desarrollo
+
+```bash
+npm run dev
+# → http://localhost:5173
+# → Abre el navegador
+# → Prueba buscar "windows" para el easter egg
+# → Profit
+```
+
+### Build de producción
+
+**si quieres contribuir, usa tu clave de firebase temporalmente, la llave de TuxTimes no es para usar en todas parte; por seguridad a no dejar basura de datos en la base de datos. despues cuando termines y funcione, cambia a las llaves oficiales, sera testeado y si funciona se fusionara*
+
+```bash
+npm run build
+# → dist/
+# Despliega donde quieras. Firebase Hosting, Vercel, Netlify, un NAS en el clóset...
+# TuxTimes no discrimina infraestructura.
+```
 
 ---
 
-## Licencia
+## 🐛 Notas Conocidas del Desarrollador
 
-```
-TuxTimes — El periódico de la comunidad Linux
-Copyright (C) 2025 — Contribuidores de TuxTimes
+*(Extraídas directamente de los comentarios del código. Sin editar. Con todo el amor.)*
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; version 2 of the License.
+> *"Sí, trae TODOS los posts. No hay paginación. Si la comunidad crece mucho... bueno, ese será el problema del futuro nosotros. El futuro nosotros nos odiará."*
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
+> *"Si alguna vez [el navStack] tiene más de 10 elementos, el usuario está perdido. Y tú también. Buena suerte."*
+
+> *"No le digas cuál es el error real. Seguridad."* (sobre mensajes de login)
+
+> *"fui yo."* (sobre quién intentó borrar un import)
+
+> *"JSON.parse falló. alguien metió la mano en el localStorage."*
+
+> *"COOP = Cross-Origin-Opener-Policy. el navegador siendo el navegador."*
+
+> *"el spinner de 'por favor espera, Firebase está pensando'"*
+
+---
+
+## 🤝 Contribuir
+
+Las contribuciones son bienvenidas, especialmente si incluyen:
+
+- ✅ Paginación (el futuro nosotros te lo agradecerá)
+- ✅ Tests unitarios para el algoritmo de poda de comentarios
+- ✅ Dark mode para el resto de elementos (ya existe, pero siempre puede ser más oscuro)
+- ✅ Más Easter Eggs relacionados con Linux
+- ✅ Integración con RSS feeds de noticias Linux libres
+- ✅ Sistema de notificaciones en tiempo real (Firestore `onSnapshot`)
+- ✅ Búsqueda full-text con Algolia (o TypeSense si prefieres el camino libre)
+- ✅ Separar el monolito App.vue en componentes más pequeños (si tienes tiempo y valentía)
+- ✅ PWA support para leer offline
+- ✅ Exportar posts en formato EPUB/PDF para llevar en el e-reader
+
+### ¿Cómo contribuir?
+
+```bash
+# Fork → Clone → Branch → Code → PR
+# El flujo de siempre. Ya sabes.
+git checkout -b feature/paginacion-por-favor
+# Haz tu magia
+git commit -m "feat: añade paginación antes de que el futuro nosotros nos odie"
+git push origin feature/paginacion-por-favor
+# Abre el PR
 ```
 
 ---
 
-*Hecho con 🐧 y mucho `sudo` — porque los mejores proyectos nacen en una terminal.*
+## ⚖️ Licencia
+
+**GPLv2** — GNU General Public License version 2.
+
+Porque si vas a hacer algo en nombre de la libertad del software, al menos sé coherente con la licencia.
+
+```
+Copyright (C) TuxTimes Contributors
+
+Este programa es software libre: puedes redistribuirlo y/o modificarlo
+bajo los términos de la Licencia Pública General GNU, tal como fue publicada
+por la Free Software Foundation, versión 2 de la Licencia.
+
+(Nota: no versión 3. Versión 2. Por razones filosóficas que no vamos a debatir aquí.)
+```
+
+---
+
+## Créditos y Reconocimientos
+
+- **Linus Torvalds** — por el kernel que inspiró todo esto, incluyendo el nombre
+- **Tux** — el pingüino. El verdadero protagonista.
+- **LWN.net** — por el paywall que desató esta cadena de eventos. Sin ti, esto no existiría. En serio.
+- **Firebase** — por cobrar por cada query y enseñarnos a escribir código eficiente a la fuerza
+- **Vue 3** — por hacer que escribir 1900 líneas en un archivo se sienta bien
+- **La Comunidad Linux** — por existir y merecer una plataforma libre
+
+---
+
+<div align="center">
+
+```
+         .--.
+        |o_o |
+        |:_/ |
+       //   \ \
+      (|     | )
+     /'\_   _/`\
+     \___)=(___/
+```
+
+**TuxTimes** — *Porque la información libre no debería costar $35 al año*
+
+🐧 *Hecho con mucho Tè, y amor por el software libre* 🐧
+
+[⬆ Volver arriba](#-tuxtimes)
+
+</div>

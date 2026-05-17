@@ -16,7 +16,8 @@ import { auth, provider, db } from './firebase'; // el santísimo trinity de Fir
 
 // Auth: porque confiar en el usuario sería un error histórico
 import {
-  signInWithRedirect, getRedirectResult,   // redirect: porque los popups son un desastre con COOP
+  signInWithPopup,                          // POPUP: El rey de las ventanas flotantes, COOP que llore lo que quiera
+  getRedirectResult,                        // Para que la línea 207 deje de tirar un ReferenceError al iniciar la app
   onAuthStateChanged,                       // el vigilante silencioso que nunca duerme
   createUserWithEmailAndPassword,           // función con nombre más largo que la mayoría de contraseñas
   signInWithEmailAndPassword,
@@ -246,18 +247,27 @@ onMounted(async () => {
   });
 });
 
-// Login con Google usando Redirect.
-// Redirect > Popup porque los popups se bloquean en ambientes con COOP estricto
-// (y Chrome está poniendo COOP en todo como si fuera salsa picante).
+// Login con Google usando Popup.
+// Volvemos a los Popups porque Google Cloud se puso en modo burócrata con sus URIs de redirección.
+// Sí, Chrome odia los popups y te va a meter un candado, pero prefiero que el usuario aprenda
+// a hacer un clic arriba a la derecha antes de volver a tocar una consola de Google OAuth.
 const loginGoogle = async () => {
   authError.value = '';
   try {
-    await signInWithRedirect(auth, provider); // ¡VAMOS! (la página se va a recargar)
-  } catch {
-    authError.value = 'Error al conectar con Google 🐧'; // raro que llegue aquí, pero por si acaso
+    await signInWithPopup(auth, provider); 
+  } catch (error) {
+    // 🚨 HACK DE INSPECCIÓN: Esto nos va a decir el código real en la consola F12
+    console.error("ERROR DE FIREBASE DETECTADO:", error);
+    console.log("CÓDIGO DE ERROR:", error.code);
+    
+    if (error.code === 'auth/popup-blocked') {
+      authError.value = '¡Huy! Tu navegador bloqueó la ventana de login. Actívala arriba a la derecha 🔑';
+    } else {
+      // Te sigue mostrando esto, pero ahora la consola nos dirá la verdad
+      authError.value = `Error al conectar con Google 🐧 (${error.code || 'Desconocido'})`; 
+    }
   }
 };
-
 // Login con email y contraseña. El clásico de toda la vida.
 // Tan antiguo como la web misma. Tan confiable como el usuario recuerde su contraseña.
 const loginEmail = async () => {
@@ -1149,7 +1159,7 @@ const deleteComment = async (postId, commentId) => {
           <div class="search-bar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input v-model="searchQuery" class="search-input"
-              :placeholder="view==='feed'?'Buscar… #tag, nombre, tema (prueba: windows 😏)':view==='favorites'?'Buscar en favoritos…':'Buscar en mis Tuxposts…'"
+              :placeholder="view==='feed'?'Buscar… #tag, nombre, tema (prueba: windows :)':view==='favorites'?'Buscar en favoritos…':'Buscar en mis Tuxposts…'"
             />
             <button v-if="hasActiveFilters" @click="clearAllFilters" class="clear-all-btn" title="Limpiar todos los filtros">✕ todo</button>
           </div>
