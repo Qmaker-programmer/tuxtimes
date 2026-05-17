@@ -333,33 +333,37 @@ const logout = () => { auth.signOut(); view.value = 'feed'; resetNav(); };
 //  POSTS — el corazón palpitante de la aplicación.
 //  Sin posts no hay app. Solo un sidebar muy bonito y muy inútil.
 // ══════════════════════════════════════════════════════════════════
-const posts = ref([]); // el array maestro. TODOS los posts viven aquí.
+const posts = ref([]);
 
-// Trae todos los posts de Firestore ordenados por fecha (más nuevo primero).
-// Sí, trae TODOS. No hay paginación. Si la comunidad crece mucho... bueno,
-// ese será el problema del futuro nosotros. El futuro nosotros nos odiará.
+// ── PAGINACIÓN ──────────────────────────────────────────────────
+const PAGE_SIZE   = 20;
+const currentPage = ref(1); // página actual (empieza en 1)
+
+// ── ORDENAMIENTO ─────────────────────────────────────────────────
+// 'fecha' → más nuevo primero (default)
+// 'nombre' → alfabético por título, desempate por fecha
+const sortBy = ref('fecha');
+
+const showSortMenu = ref(false);
+
+// Trae TODOS los posts de Firestore ordenados por fecha.
+// Nota: ese alguien soy yo — Qmaker. El futuro nosotros resolvió la paginación :)
 const fetchPosts = async () => {
   const q    = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
   const snap = await getDocs(q);
   posts.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// Abre un post en el overlay (modal de pantalla completa).
-// Guarda el hash #post-{id} en la URL para que sea compartible.
-// Si alguien comparte la URL y el post fue borrado, se queda en el feed. Tacto natural.
+// Abrir post
 const openPost = (post) => {
   history.pushState({ navLen: navStack.value.length + 1 }, '', `#post-${post.id}`);
-  pushNav({ type: 'post', data: { ...post } }); // copia del post, no referencia
-  view.value = 'feed'; // nos aseguramos de estar en el feed para mostrar el overlay
+  pushNav({ type: 'post', data: { ...post } });
+  view.value = 'feed';
 };
 
-// Abre el perfil público de un autor.
-// Intenta cargar el perfil completo desde Firestore.
-// Si no existe el perfil (usuario viejo sin perfil), usa los datos del post como fallback.
-// El spread de stopPropagation es para que no se abra el post al hacer click en el autor.
-// (clickear el autor dentro de un post ya abierto también funciona. somos amables.)
+// Abrir perfil de autor
 const openAuthor = async (post, evt) => {
-  evt?.stopPropagation(); // ¡no abras el post también! basta con el perfil.
+  evt?.stopPropagation();
   let profile = {
     uid: post.authorUid || null, displayName: post.author,
     photoURL: post.authorPhoto || '', bio: '', nickname: '',
@@ -370,13 +374,12 @@ const openAuthor = async (post, evt) => {
       const snap = await getDoc(doc(db, 'profiles', post.authorUid));
       if (snap.exists()) {
         profile = { uid: post.authorUid, ...snap.data() };
-        if (!profile.photoURL) profile.photoURL = post.authorPhoto || ''; // fallback foto
+        if (!profile.photoURL) profile.photoURL = post.authorPhoto || '';
       } else {
-        profile.photoURL = post.authorPhoto || ''; // usuario sin perfil. le damos la foto del post.
+        profile.photoURL = post.authorPhoto || '';
       }
-    } catch { profile.photoURL = post.authorPhoto || ''; } // Firestore falló. vida sigue.
+    } catch { profile.photoURL = post.authorPhoto || ''; }
   }
-  // Filtra los posts de este autor desde el array local (sin query extra 💸)
   const authorPostsList = posts.value.filter(p =>
     p.authorUid === post.authorUid || p.author === post.author
   );
@@ -384,30 +387,21 @@ const openAuthor = async (post, evt) => {
   pushNav({ type: 'author', data: { profile, posts: authorPostsList } });
 };
 
-// Cierra el overlay actual (post o autor) y restaura el hash de la URL.
-// Si cerramos el último overlay, volvemos al pathname limpio.
 const closeOverlay = () => {
   popNav();
   if (navStack.value.length === 1) history.pushState({}, '', window.location.pathname);
 };
 
-// Computeds de conveniencia para saber qué está mostrando el overlay.
-// No acceden a Firestore. Solo leen el navStack. Baratos y rápidos.
 const expandedPost = computed(() => currentNav.value.type === 'post'   ? currentNav.value.data : null);
 const authorData   = computed(() => currentNav.value.type === 'author' ? currentNav.value.data : null);
 
 // ══════════════════════════════════════════════════════════════════
-//  FILTROS — el buscador más completo que nadie pidió
-//  Soporta: texto libre, tags con #, múltiples categorías.
-//  Todo al mismo tiempo. Porque podemos. Aunque nadie lo use así.
+//  FILTROS
 // ══════════════════════════════════════════════════════════════════
-const searchQuery      = ref('');  // lo que el usuario escribe en la barra de búsqueda
-const activeCategories = ref([]);  // array de categorías activas (pueden ser varias)
-const activeTags       = ref([]);  // reservado para filtro de tags por click (futuro)
+const searchQuery      = ref('');
+const activeCategories = ref([]);
+const activeTags       = ref([]);
 
-// Parsea la búsqueda separando tags (#algo) de texto libre.
-// Ejemplo: "linux, #bash, seguridad" → tags: ['bash'], texts: ['linux', 'seguridad']
-// (los tags van al filtro exacto de tags del post, el texto va al título/autor/categoría)
 const parsedSearch = computed(() => {
   const parts = searchQuery.value.split(',').map(s => s.trim()).filter(Boolean);
   const tags  = [];
@@ -419,40 +413,32 @@ const parsedSearch = computed(() => {
   return { tags, texts };
 });
 
-// Click en una categoría del sidebar → la agrega/quita del filtro activo
 const goToCategory = (cat) => {
   if (!activeCategories.value.includes(cat)) activeCategories.value.push(cat);
   else activeCategories.value = activeCategories.value.filter(c => c !== cat);
-  view.value = 'feed'; resetNav(); // siempre volvemos al feed al filtrar
+  view.value = 'feed'; resetNav();
 };
 
-// Click en el chip de categoría activa (en la barra de filtros) → la quita
 const toggleCategoryFilter = (cat) => {
   const i = activeCategories.value.indexOf(cat);
   if (i === -1) activeCategories.value.push(cat);
   else          activeCategories.value.splice(i, 1);
 };
 
-// Botón "✕ todo" — limpia absolutamente todo. tabula rasa. día cero.
 const clearAllFilters = () => {
   searchQuery.value = ''; activeCategories.value = []; activeTags.value = [];
+  currentPage.value = 1;
 };
 
-// La función filtro universal. Aplica todos los criterios activos a una lista de posts.
-// Se usa para el feed, favoritos Y mis posts → un solo lugar para mantener.
-// (DRY: Don't Repeat Yourself. principio básico. lo hemos violado antes. no más.)
+// Filtro universal — aplica búsqueda y categorías
 const applyPostFilter = (list) => {
   let p = list;
-  // Primero filtrar por categorías (si hay alguna activa)
   if (activeCategories.value.length)
     p = p.filter(x => activeCategories.value.includes(x.category));
-  // Luego aplicar lo que escribió en la búsqueda
   const { tags, texts } = parsedSearch.value;
   if (tags.length)
-    // todos los tags del filtro deben estar en los tags del post (AND lógico)
     p = p.filter(x => tags.every(t => (x.tags || []).some(pt => pt.toLowerCase().includes(t))));
   if (texts.length)
-    // basta con que coincida UNO de los textos (OR lógico) en título/autor/categoría/tags
     p = p.filter(x => texts.some(q =>
       x.title?.toLowerCase().includes(q)    ||
       x.author?.toLowerCase().includes(q)   ||
@@ -462,21 +448,53 @@ const applyPostFilter = (list) => {
   return p;
 };
 
-// Los tres feeds computados. Cada uno aplica el filtro sobre su subconjunto.
-const filteredPosts = computed(() => applyPostFilter(posts.value));
-const favoritePosts = computed(() => applyPostFilter(posts.value.filter(p => hasStarred(p))));
-const myPosts       = computed(() => applyPostFilter(posts.value.filter(p =>
-  p.authorUid === user.value?.uid || p.author === user.value?.displayName
-  // doble condición porque usuarios viejos pueden no tener UID guardado en el post
-)));
+// Ordena la lista según el sortBy actual.
+// Si sortBy es 'nombre': alfabético por título, con desempate por fecha (más nuevo primero).
+// Si hay empate de nombre EXACTO entre ≥2 posts, los desempata por fecha automáticamente.
+const applySortOrder = (list) => {
+  if (sortBy.value === 'nombre') {
+    return [...list].sort((a, b) => {
+      const cmp = (a.title || '').localeCompare(b.title || '', 'es', { sensitivity: 'base' });
+      if (cmp !== 0) return cmp; // diferente nombre → orden alfabético
+      // mismo nombre exacto → desempate por fecha (más nuevo primero)
+      const da = a.createdAt?.toDate?.() || new Date(0);
+      const db_ = b.createdAt?.toDate?.() || new Date(0);
+      return db_ - da;
+    });
+  }
+  // 'fecha' → el array ya viene ordenado desc de Firestore, no tocamos nada
+  return list;
+};
 
-// ¿Hay algún filtro activo? Para mostrar/ocultar el botón "limpiar todo"
+// Posts filtrados + ordenados (sin paginar) — el total real
+const allFilteredPosts  = computed(() => applySortOrder(applyPostFilter(posts.value)));
+const favoritePosts     = computed(() => applySortOrder(applyPostFilter(posts.value.filter(p => hasStarred(p)))));
+const myPosts           = computed(() => applySortOrder(applyPostFilter(posts.value.filter(p =>
+  p.authorUid === user.value?.uid || p.author === user.value?.displayName
+))));
+
+// ── PAGINACIÓN aplicada al feed principal ────────────────────────
+const totalPages    = computed(() => Math.max(1, Math.ceil(allFilteredPosts.value.length / PAGE_SIZE)));
+const filteredPosts = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE;
+  return allFilteredPosts.value.slice(start, start + PAGE_SIZE);
+});
+
+// Resetear página al cambiar filtros o sort
+watch([searchQuery, activeCategories, sortBy], () => { currentPage.value = 1; });
+
+const goPage = (n) => {
+  currentPage.value = Math.max(1, Math.min(n, totalPages.value));
+  // scroll suave al top del feed
+  document.querySelector('.feed-section')?.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+// ¿Hay algún filtro activo?
 const hasActiveFilters = computed(() =>
   searchQuery.value || activeCategories.value.length || activeTags.value.length
 );
 
-// EASTER EGG: si el usuario busca "windows" → BSoD de Linux. porque somos así.
-// (si alguien reporta esto como bug, es que no entiende la cultura)
+// EASTER EGG
 const showWindowsEgg = ref(false);
 watch(searchQuery, (v) => { showWindowsEgg.value = v.toLowerCase().includes('windows'); });
 
@@ -1110,7 +1128,6 @@ const deleteComment = async (postId, commentId) => {
   }
 };
 
-
 </script>
 
 <template>
@@ -1180,6 +1197,7 @@ const deleteComment = async (postId, commentId) => {
         <!-- FEED / MIS POSTS / FAVORITOS — misma barra de búsqueda unificada -->
         <section v-if="view==='feed'||view==='favorites'||view==='myposts'" :key="view" class="feed-section">
           <!-- Barra de búsqueda unificada -->
+          <!-- SORT DROPDOWN -->
           <div class="search-bar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input v-model="searchQuery" class="search-input"
@@ -1217,6 +1235,20 @@ const deleteComment = async (postId, commentId) => {
           </div>
 
           <!-- Grid de posts -->
+          <div class="sort-bar">
+            <div class="sort-dropdown-wrap">
+              <span class="sort-label">Ordenar por:</span>
+              <button class="sort-btn" @click="showSortMenu=!showSortMenu">
+                {{ sortBy === 'fecha' ? '📅 Fecha' : '🔤 Nombre' }} ▾
+              </button>
+              <div v-if="showSortMenu" class="sort-menu" @mouseleave="showSortMenu=false">
+                <button class="sort-option" :class="{active:sortBy==='fecha'}"  @click="sortBy='fecha';showSortMenu=false">📅 Fecha <span v-if="sortBy==='fecha'">✓</span></button>
+                <button class="sort-option" :class="{active:sortBy==='nombre'}" @click="sortBy='nombre';showSortMenu=false">🔤 Nombre <span v-if="sortBy==='nombre'">✓</span></button>
+              </div>
+            </div>
+            <span class="sort-count">{{ allFilteredPosts.length }} posts</span>
+          </div>
+
           <div class="posts-grid">
             <template v-for="post in (view==='feed'?filteredPosts:view==='favorites'?favoritePosts:myPosts)" :key="post.id">
               <article class="post-card" @click="openPost(post)">
@@ -1252,7 +1284,16 @@ const deleteComment = async (postId, commentId) => {
               <p v-else>Sin resultados 🐧</p>
             </div>
           </div>
+
+          <!-- PAGINACIÓN — solo aparece si hay más de una página -->
+          <div v-if="view==='feed' && totalPages > 1" class="pagination-bar">
+            <button class="page-btn" :disabled="currentPage===1" @click="goPage(currentPage-1)">← Anterior</button>
+            <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+            <button class="page-btn" :disabled="currentPage===totalPages" @click="goPage(currentPage+1)">Siguiente →</button>
+          </div>
+
         </section>
+
 
         <!-- EDITOR -->
         <section v-else-if="view==='new-post'" key="editor" class="editor-section">
@@ -2029,7 +2070,7 @@ body[data-theme="light"],.shell[data-theme="light"]{ background:var(--bg); }
 
 /* ══════════════════════════════════════════════════════════════════
    RESPONSIVE PATCH — TuxTimes
-   Reemplaza el bloque /* ── RESPONSIVE ─── */ al final de tu <style>
+   Reemplaza el bloque [ ── RESPONSIVE ─── ] al final de tu <style>
    ══════════════════════════════════════════════════════════════════ */
 
 /* ── RESPONSIVE ─── */
@@ -2226,4 +2267,26 @@ body[data-theme="light"],.shell[data-theme="light"]{ background:var(--bg); }
   .shell { height: 100dvh; }
   .modal-post, .modal-author { max-height: 85dvh; }
 }
+
+/* ── SORT BAR ── */
+.sort-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px}
+.sort-dropdown-wrap{position:relative;display:flex;align-items:center;gap:8px}
+.sort-btn{padding:7px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);cursor:pointer;font-size:.8rem;font-weight:600;font-family:inherit;transition:all .2s}
+.sort-btn:hover{border-color:var(--accent);color:var(--accent)}
+.sort-menu{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;z-index:100;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.sort-option{display:flex;justify-content:space-between;align-items:center;width:100%;padding:10px 16px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.82rem;font-family:inherit;transition:background .15s}
+.sort-option:hover{background:var(--surface2);color:var(--text)}
+.sort-option.active{color:var(--accent);font-weight:700}
+.sort-count{font-size:.78rem;color:var(--muted)}
+.sort-label{font-size:.8rem;color:var(--muted);white-space:nowrap;font-family:inherit;font-weight:600;margin:0;padding:0;display:inline}
+
+/* ── PAGINACIÓN ── */
+.pagination-bar{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:24px;padding:16px 0}
+.page-btn{padding:9px 20px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);cursor:pointer;font-size:.85rem;font-weight:600;font-family:inherit;transition:all .2s}
+.page-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.page-btn:disabled{opacity:.35;cursor:not-allowed}
+.page-info{font-size:.85rem;color:var(--muted);font-weight:600;min-width:60px;text-align:center}
+
+/* HIGH CONTRAST: paginación y sort */
+[data-theme="hc"] .sort-btn:hover,[data-theme="hc"] .page-btn:hover:not(:disabled){border-color:#1aabff;color:#1aabff;box-shadow:0 0 8px rgba(26,171,255,.3)}
 </style>
