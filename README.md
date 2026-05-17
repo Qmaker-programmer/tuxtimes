@@ -11,6 +11,12 @@
 
 # 🐧 TuxTimes
 
+<br/>
+
+![TuxTimes Preview](preview.png)
+
+<br/>
+
 ### *El lector de noticias Linux que nació de la rabia pura y el odio a los paywalls arcaicos*
 
 [![Vue 3](https://img.shields.io/badge/Vue-3.x-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white)](https://vuejs.org/)

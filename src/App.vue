@@ -1099,11 +1099,17 @@ const deleteComment = async (postId, commentId) => {
   <div class="shell">
     <!-- ═══════════ SIDEBAR ═══════════ -->
     <aside class="sidebar">
-      <div class="sidebar-brand">
-        <img :src="tuxImg" alt="Tux" class="tux-logo" title="Click: sombrero 🎩 | Doble click: ¡EXPLOTA! 💥" @click="tuxSombrero" @dblclick="explodeTux"/>
-        <span class="brand-name">TuxTimes</span>
-        <span class="brand-badge">GPLv2</span>
+    <div class="sidebar-brand">
+      <!-- Contenedor relativo para poder poner el octocat encima de Tux -->
+      <div class="tux-wrapper">
+        <img :src="tuxImg" alt="Tux" class="tux-logo" title="Tux" @click="tuxSombrero" @dblclick="explodeTux"/>
+        <a href="https://github.com/Qmaker-programmer/tuxtimes" target="_blank" rel="noopener" class="octocat-badge" title="Octocat">
+          <img src="/github-cat.gif" alt="GitHub"/>
+        </a>
       </div>
+      <span class="brand-name">TuxTimes</span>
+      <span class="brand-badge">GPLv2</span>
+    </div>
 
       <nav class="sidebar-nav">
         <button class="nav-item" :class="{active:view==='feed'&&navStack.length===1}" @click="view='feed';resetNav()">
@@ -1631,6 +1637,11 @@ body{overflow:hidden;background:#080b10}
 .tux-logo:hover{transform:rotate(-8deg) scale(1.08)}
 .brand-name{font-size:1.25rem;font-weight:800;letter-spacing:-.5px;color:#fff}
 .brand-badge{font-size:.6rem;background:var(--accent);color:#fff;padding:2px 8px;border-radius:100px}
+.tux-wrapper{position:relative;width:72px;height:72px;flex-shrink:0}
+.tux-wrapper .tux-logo{width:72px;height:72px}
+.octocat-badge{position:absolute;bottom:-4px;right:-4px;width:36px;height:36px;border-radius:50%;overflow:hidden;border:2px solid var(--surface);display:block;transition:transform .2s,box-shadow .2s;cursor:pointer}
+.octocat-badge:hover{transform:scale(1.15);box-shadow:0 0 12px rgba(59,130,246,.5)}
+.octocat-badge img{width:100%;height:100%;object-fit:cover}
 .sidebar-nav{display:flex;flex-direction:column;gap:4px;padding:16px 12px;border-bottom:1px solid var(--border)}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border:none;background:transparent;color:var(--muted);border-radius:10px;cursor:pointer;font-size:.875rem;font-weight:600;text-align:left;transition:all .15s;font-family:inherit;white-space:nowrap}
 .nav-item:hover{background:var(--surface2);color:var(--text)}
