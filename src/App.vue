@@ -49,6 +49,7 @@ const pushNav     = (e) => navStack.value.push(e);           // abrir algo encim
 const popNav      = () => { if (navStack.value.length > 1) navStack.value.pop(); }; // volver. como en la vida real.
 const resetNav    = () => { navStack.value = [{ type: 'feed' }]; };               // PANIC BUTTON — todo al inicio
 const showOverlay = computed(() => navStack.value.length > 1 && view.value === 'feed'); // ¿hay algo encima del feed?
+const profilesCache = ref({}); // Va a guardar temporalmente { uid: { avatarUrl: 'base64...' } }
 
 // Vista principal activa. Solo una a la vez, como Dios manda.
 // (los tabs también son vistas. tabs = pestañas del sidebar, no las del navegador.
@@ -233,20 +234,59 @@ onMounted(async () => {
     authError.value = 'Error al procesar el inicio de sesión 🐧';
   }
 
-  // PASO 2: Escuchar cambios de autenticación EN TIEMPO REAL.
+// PASO 2: Escuchar cambios de autenticación EN TIEMPO REAL.
   // onAuthStateChanged dispara inmediatamente con el estado actual,
   // y luego cada vez que el usuario entra o sale.
   // Aprovechamos esa primera llamada para cargar los posts Y aplicar el hash de la URL.
   // (orden importa: primero posts, luego hash. #post-ID necesita los posts cargados.)
-  onAuthStateChanged(auth, u => {
-    user.value = u;
-    fetchPosts().then(() => {
-      // Aplicar hash DESPUÉS de que los posts estén en memoria
-      // para que #post-{ID} encuentre el post y lo abra correctamente.
-      applyHash(window.location.hash);
-    });
-  });
+// PASO 2: Escuchar cambios de autenticación EN TIEMPO REAL.
+onAuthStateChanged(auth, async (u) => {
+  user.value = u;
+  
+  if (u) {
+    // 🚀 DESCARGA O INICIALIZACIÓN EN CALIENTE
+    try {
+      const pRef = doc(db, 'profiles', u.uid);
+      const pSnap = await getDoc(pRef);
+      
+      if (pSnap.exists()) {
+        // El perfil ya existía, lo cargamos felizmente
+        currentUserProfile.value = pSnap.data();
+      } else {
+        // 🔥 ¡EL FIX!: Si el usuario existe en Auth pero no en Firestore, lo creamos YA
+        console.log("¡Usuario nuevo detectado! Creando perfil en Firestore para:", u.uid);
+        
+        // Formateamos un nombre decente dependiendo de cómo se registró
+        const fallbackName = u.displayName || u.phoneNumber || u.email?.split('@')[0] || 'Pingüino Nuevo';
+        
+        const newProfile = {
+          uid: u.uid,
+          displayName: fallbackName,
+          photoURL: u.photoURL || '',
+          avatarUrl: '', // Base64 vacío al inicio
+          bio: '¡Hola! Soy nuevo en TuxTimes. 🐧',
+          nickname: '',
+          customUrl: '',
+          hideEmail: true,
+          hideName: false,
+          createdAt: new Date() // Para saber cuándo nació esta alma
+        };
+        
+        // Lo guardamos en Firestore con setDoc (usando su UID como ID del documento)
+        await setDoc(pRef, newProfile);
+        currentUserProfile.value = newProfile;
+      }
+    } catch (err) {
+      console.error("Error crítico al recuperar/inicializar el perfil:", err);
+    }
+  } else {
+    currentUserProfile.value = null; // Limpieza si hace logout
+  }
 
+  fetchPosts().then(() => {
+    applyHash(window.location.hash);
+  });
+});
   // PASO 3: Escuchar el botón "atrás" / "adelante" del navegador.
   // hashchange dispara cuando el hash de la URL cambia por navegación del browser.
   // (pushState no lo dispara. la API de historial es un desastre de diseño. gracias, HTML5.)
@@ -903,6 +943,7 @@ const settingsHideName      = ref(false);
 const settingsSaving        = ref(false);
 const settingsAvatarPreview = ref('');
 const settingsAvatarBase64  = ref(''); // el avatar como string base64. largo. muy largo.
+const currentUserProfile = ref(null); // Aquí vivirá tu Base64 bajado de Firestore
 
 // Carga los datos del perfil del usuario desde Firestore y navega a settings.
 const openSettings = async () => {
@@ -924,43 +965,68 @@ const openSettings = async () => {
   resetNav(); view.value = 'settings';
 };
 
-// Maneja el cambio de avatar: lee el archivo como base64 y actualiza el preview.
-// Revoca el blob anterior si existe para evitar memory leaks.
-// (los memory leaks en el browser son el karma de no hacer cleanup.)
-const onAvatarChange = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (settingsAvatarPreview.value.startsWith('blob:')) URL.revokeObjectURL(settingsAvatarPreview.value);
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    settingsAvatarBase64.value  = ev.target.result; // data:image/...;base64,...
-    settingsAvatarPreview.value = ev.target.result; // preview inmediato, sin subir nada
-  };
-  reader.readAsDataURL(file);
+// Maneja la inserción de avatar por URL directa.
+// Si el usuario venía de cargar un archivo, limpiamos el Base64 y el blob para que mande la URL limpia.
+const onAvatarUrlInput = (e) => {
+  const url = e.target.value.trim();
+  
+  // Si había un blob residual de un archivo cargado antes, le hacemos cleanup
+  if (settingsAvatarPreview.value.startsWith('blob:')) {
+    URL.revokeObjectURL(settingsAvatarPreview.value);
+  }
+
+  // Sincronizamos ambos estados con la URL externa
+  settingsAvatarPreview.value = url;
+  settingsAvatarBase64.value  = url; 
+  // Al hacer esto, cuando tu función 'saveSettings' tome 'settingsAvatarBase64' 
+  // para mandarlo a Firestore, enviará la URL en vez del Base64 original. ¡Sin tocar nada más!
 };
 
 // Guarda todos los datos del perfil en Firestore.
 // { merge: true } = solo actualiza los campos que enviamos, no sobreescribe todo.
-// (sin merge, si olvidas un campo en el objeto, ese campo desaparece de Firestore. lo aprendimos.)
 const saveSettings = async () => {
   if (!user.value) return;
   settingsSaving.value = true;
-  const avatarB64 = settingsAvatarBase64.value || settingsAvatarPreview.value;
-  await setDoc(doc(db, 'profiles', user.value.uid), {
-    uid:         user.value.uid,
-    displayName: user.value.displayName,
-    photoURL:    user.value.photoURL || '',
-    avatarB64,
-    nickname:    settingsNickname.value.trim(),
-    bio:         settingsBio.value.trim(),
-    customUrl:   settingsCustomUrl.value.trim().replace(/\s+/g, '-').toLowerCase(), // slug-ificado
-    hideEmail:   settingsHideEmail.value,
-    hideName:    settingsHideName.value,
-    updatedAt:   serverTimestamp(),
-  }, { merge: true });
-  settingsSaving.value = false;
-  settingsAvatarBase64.value = '';
-  view.value = 'feed'; // de vuelta al feed. misión cumplida.
+  
+  // Guardamos el string (sea Base64 o la URL externa)
+  const avatarUrlData = settingsAvatarBase64.value || settingsAvatarPreview.value || '';
+
+  try {
+    const profileRef = doc(db, 'profiles', user.value.uid);
+    
+    // Verificamos si el perfil ya existe para saber si inyectamos el createdAt
+    const docSnap = await getDoc(profileRef);
+    
+    const profileData = {
+      uid:         user.value.uid,
+      displayName: user.value.displayName || '',
+      photoURL:    user.value.photoURL || '',
+      avatarUrl:   avatarUrlData, // 🔥 FIX: Ahora se llama 'avatarUrl' igual que en tus reglas
+      nickname:    settingsNickname.value.trim(),
+      bio:         settingsBio.value.trim(),
+      customUrl:   settingsCustomUrl.value.trim().replace(/\s+/g, '-').toLowerCase(), // slug-ificado
+      hideEmail:   settingsHideEmail.value,
+      hideName:    settingsHideName.value,
+      updatedAt:   serverTimestamp(),
+    };
+
+    // Si es un usuario totalmente nuevo, le clavamos su fecha de nacimiento comunitaria
+    if (!docSnap.exists()) {
+      profileData.createdAt = serverTimestamp();
+    }
+
+    await setDoc(profileRef, profileData, { merge: true });
+    
+    // Limpieza de estados y retorno exitoso
+    settingsSaving.value = false;
+    settingsAvatarBase64.value = '';
+    view.value = 'feed'; // de vuelta al feed. misión cumplida.
+    
+  } catch (error) {
+    console.error("Error al guardar la configuración:", error);
+    alert("Error de sincronización con Firebase. Revisa la consola.");
+    settingsSaving.value = false;
+  }
 };
 
 // ── HELPERS DE AVATAR ────────────────────────────────────────────
@@ -970,24 +1036,75 @@ const saveSettings = async () => {
 //
 // Devuelve la URL del avatar del usuario, o el Tux por defecto si no tiene foto.
 // Se usa en TODOS los <img> de avatar de la app. Absolutamente todos. Sin excepción.
-const getUserAvatar = (photoURL) => photoURL || '/tux.png';
+// ── HELPERS DE AVATAR ────────────────────────────────────────────
+// Modificada e inteligente: Intercepta strings viejos de Google Auth,
+// detecta si pertenecen al usuario logueado, y prioriza el Base64 reactivo.
+// ──
+// Resuelve el avatar del AUTOR REAL del post o comentario.
+// Si es el usuario actual, prioriza su preview. Si es otro, busca su Base64.
+// ── HELPER DE AVATAR AUTO-GESTIONADO ─────────────────────────────
+// Caché en memoria para evitar colapsar Firestore con lecturas duplicadas
 
-// ── COPIAR MARKDOWN AL PORTAPAPELES ──────────────────────────────
-// Para los puristas que quieren el contenido en su formato original.
-// Genera un markdown básico con el título como H1 y el contenido del post.
-// El botón muestra "✅ ¡Copiado!" por 2 segundos y vuelve a su estado normal.
-const copiedPostId = ref(null); // qué post tiene el estado "copiado" activo
-const copyPostMarkdown = async (post) => {
-  const md = `# ${post.title}\n\n${post.content}`;
+const _avatarCache = {};
+
+const getUserAvatar = (userSource) => {
+  if (!userSource) return '/tux.png';
+
   try {
-    await navigator.clipboard.writeText(md);
-    copiedPostId.value = post.id;
-    setTimeout(() => { copiedPostId.value = null; }, 2000); // 2 segundos de gloria
-  } catch {
-    alert('No se pudo copiar al portapapeles 🐧'); // raro pero posible en HTTP sin HTTPS
+    // 1. Si es una URL directa (ej: string http de Google viejo)
+    if (typeof userSource === 'string' && userSource.startsWith('http')) {
+      // Si eres tú mismo en ajustes, mostramos tu preview en vivo
+      if (user.value && userSource === user.value.photoURL && typeof settingsAvatarPreview !== 'undefined' && settingsAvatarPreview.value) {
+        return settingsAvatarPreview.value;
+      }
+      return userSource;
+    }
+
+    // 2. Extraemos el UID único del autor (sea pasándole el ID o el objeto entero del post/comentario)
+    const uid = typeof userSource === 'object' ? (userSource.uid || userSource.authorUid) : userSource;
+    if (!uid || typeof uid !== 'string') return '/tux.png';
+
+    // 3. Si eres TÚ (el usuario logueado) y tienes un preview vivo en los ajustes, prioridad absoluta
+    if (user.value && uid === user.value.uid) {
+      if (typeof settingsAvatarPreview !== 'undefined' && settingsAvatarPreview.value) {
+        return settingsAvatarPreview.value;
+      }
+    }
+
+    // 4. Si el Base64 de este autor ya está guardado en nuestra caché local, lo inyectamos de una
+    if (_avatarCache[uid]) {
+      return _avatarCache[uid];
+    }
+
+    // 5. ¡LA MAGIA ASÍNCRONA SIN CRASHEOS!: Si no lo conocemos y no estamos cargándolo ya
+    if (!_avatarCache[uid]) {
+      _avatarCache[uid] = '/tux.png'; // Marcador temporal mientras Firebase responde
+
+      // Vamos de forma silenciosa a la colección de profiles en Firestore
+      getDoc(doc(db, 'profiles', uid)).then((snap) => {
+        if (snap.exists() && snap.data().avatarUrl) {
+          // Guardamos su Base64 real en la memoria
+          _avatarCache[uid] = snap.data().avatarUrl;
+          
+          // Forzamos a Vue a dar un sutil parpadeo reactivo para refrescar la UI sin romper el ciclo de render
+          if (typeof posts !== 'undefined' && posts.value) {
+            posts.value = [...posts.value];
+          }
+        }
+      }).catch(() => {});
+    }
+
+    // 6. Respaldo estático e instantáneo mientras Firestore responde en segundo plano
+    if (typeof userSource === 'object') {
+      return userSource.avatarUrl || userSource.authorPhoto || '/tux.png';
+    }
+    return _avatarCache[uid] || '/tux.png';
+
+  } catch (e) {
+    console.warn("Fallo silencioso controlado en render de avatar:", e);
+    return '/tux.png';
   }
 };
-
 // ══════════════════════════════════════════════════════════════════
 //   TAGS / CATEGORÍAS (¡Con espacio para el humor!)
 // ══════════════════════════════════════════════════════════════════
@@ -1259,10 +1376,10 @@ const deleteComment = async (postId, commentId) => {
                 <h2 class="post-title">{{ post.title }}</h2>
                 <div class="post-content" v-html="marked(post.content)"></div>
                 <footer class="post-footer">
-                  <div class="post-author" @click.stop="openAuthor(post,$event)">
-                    <img :src="getUserAvatar(post.authorPhoto)" class="author-avatar"/>
-                    <span class="author-link">{{ post.author }}</span>
-                  </div>
+                    <div class="post-author" @click="openAuthor(currentNav.data, $event)">
+                      <img :src="getUserAvatar(currentNav.data)" class="author-avatar" alt="Avatar del autor"/>
+                      <span class="author-link">{{ currentNav.data.author }}</span>
+                    </div>
                   <div class="post-actions-row">
                     <button v-if="user&&!isOwner(post)" class="star-btn" :class="{starred:hasStarred(post)}" @click.stop="toggleStar(post,$event)">⭐ {{ starCount(post) }}</button>
                     <span v-else class="star-count-only">⭐ {{ starCount(post) }}</span>
@@ -1371,17 +1488,29 @@ const deleteComment = async (postId, commentId) => {
         <section v-else-if="view==='settings'" key="settings" class="settings-section">
           <h2 class="editor-title">⚙️ Configuración de Tuxcuenta</h2>
           <div class="settings-card">
-            <div class="settings-avatar-section">
+            <div class="settings-avatar-section" style="flex-wrap: wrap; gap: 16px;">
               <div class="settings-avatar-wrap">
                 <img :src="settingsAvatarPreview||'/tux.png'" class="settings-avatar-big" alt="Avatar"/>
-                <label class="avatar-change-btn" title="Cambiar avatar">
+                <label class="avatar-change-btn" title="Subir archivo local">
                   📷<input type="file" accept="image/*" style="display:none" @change="onAvatarChange"/>
                 </label>
               </div>
-              <div>
+              <div style="flex: 1; min-width: 200px;">
                 <div class="settings-real-name">{{ user?.displayName }}</div>
                 <div class="settings-email-dim">{{ user?.email }}</div>
-                <div class="settings-note">Haz clic en 📷 para cambiar tu avatar 🐧</div>
+                <div class="settings-note">Haz clic en 📷 para subir un archivo local 🐧</div>
+              </div>
+
+              <div class="field-group" style="width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border);">
+                <label class="field-label" style="font-size: 0.8rem; margin-bottom: 4px;">🔗 O enlaza un avatar por URL externa</label>
+                <input 
+                  v-model="settingsAvatarPreview" 
+                  class="settings-input" 
+                  placeholder="https://ejemplo.com/tu-foto.png..." 
+                  style="font-size: 0.85rem; padding: 8px 12px;"
+                  @input="onAvatarUrlInput"
+                />
+                <small class="field-hint">Si pegas un enlace directo a una imagen, se renderizará automáticamente.</small>
               </div>
             </div>
 
