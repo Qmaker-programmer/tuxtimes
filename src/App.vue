@@ -989,10 +989,10 @@ const copyPostMarkdown = async (post) => {
 };
 
 // ══════════════════════════════════════════════════════════════════
-//  TAGS / CATEGORÍAS
+//   TAGS / CATEGORÍAS (¡Con espacio para el humor!)
 // ══════════════════════════════════════════════════════════════════
-const POPULAR_TAGS = ['linux','kernel','bash','python','seguridad','debian','arch','ubuntu','fedora','rust','c++','systemd','git','docker','firefox'];
-const CATEGORIES   = ['Gestión de Memoria','Virus & Malware','Parches & Updates','Riesgos & CVEs','Consejos & Tips','Audio & Drivers','Errores & Bugs','Kernel & Syscalls','Redes & Firewall','Cifrado & Crypto','Contenedores & Docker','Virtualización','Scripting & Bash','Compiladores','Bases de Datos','Privacidad','Hardware','Distros & Releases','Open Source','Inteligencia Artificial'];
+const POPULAR_TAGS = ['linux','kernel','bash','python','seguridad','debian','arch','ubuntu','fedora','rust','c++','systemd','git','docker','firefox','meme','humor'];
+const CATEGORIES   = ['Gestión de Memoria','Virus & Malware','Parches & Updates','Riesgos & CVEs','Consejos & Tips','Audio & Drivers','Errores & Bugs','Kernel & Syscalls','Redes & Firewall','Cifrado & Crypto','Contenedores & Docker','Virtualización','Scripting & Bash','Compiladores','Bases de Datos','Privacidad','Hardware','Distros & Releases','Open Source','Inteligencia Artificial', 'Memes & Humor', 'Otros & Comunidad'];
 
 const customTagInput = ref('');
 const toggleTag      = t => { const i=selectedTags.value.indexOf(t); i===-1?selectedTags.value.push(t):selectedTags.value.splice(i,1); };
