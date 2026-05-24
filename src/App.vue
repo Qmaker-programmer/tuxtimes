@@ -1376,10 +1376,17 @@ const deleteComment = async (postId, commentId) => {
                 <h2 class="post-title">{{ post.title }}</h2>
                 <div class="post-content" v-html="marked(post.content)"></div>
                 <footer class="post-footer">
-                    <div class="post-author" @click="openAuthor(currentNav.data, $event)">
-                      <img :src="getUserAvatar(currentNav.data)" class="author-avatar" alt="Avatar del autor"/>
-                      <span class="author-link">{{ currentNav.data.author }}</span>
-                    </div>
+					<div class="post-author" @click.stop="openAuthor(post, $event)">
+					  <img 
+					    v-if="post?.authorPhoto" 
+					    :src="post.authorPhoto" 
+					    class="author-avatar" 
+					    alt="Avatar del autor"
+					  />
+					  <span v-else style="font-size: 16px; margin-right: 8px;">🐧</span>
+					  
+					  <span class="author-link">{{ post?.author || 'Autor Anónimo' }}</span>
+					</div>
                   <div class="post-actions-row">
                     <button v-if="user&&!isOwner(post)" class="star-btn" :class="{starred:hasStarred(post)}" @click.stop="toggleStar(post,$event)">⭐ {{ starCount(post) }}</button>
                     <span v-else class="star-count-only">⭐ {{ starCount(post) }}</span>

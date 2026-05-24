@@ -53,12 +53,14 @@ const saveEdit = () => {
   <div class="comment-node" :style="nodeStyle">
     <div class="comment-bubble">
       <div class="comment-header">
-        <img v-if="comment.authorPhoto" :src="getAvatar(comment.authorPhoto)" class="comment-avatar-sm"/>
+        <img v-if="comment?.authorPhoto" :src="getAvatar(comment.authorPhoto)" class="comment-avatar-sm"/>
         <span v-else style="font-size:18px">🐧</span>
-        <span class="comment-author">{{ comment.author }}</span>
+        
+        <span class="comment-author">{{ comment?.author || 'Pingüino Anónimo' }}</span>
+        
         <span class="comment-date">
-          {{ fmt(comment.createdAt) }} 
-          <span v-if="comment.editedAt" style="font-size: 10px; opacity: 0.6; font-style: italic;">(editado)</span>
+          {{ fmt(comment?.createdAt) }} 
+          <span v-if="comment?.editedAt" style="font-size: 10px; opacity: 0.6; font-style: italic;">(editado)</span>
         </span>
       </div>
 
@@ -75,14 +77,14 @@ const saveEdit = () => {
         </div>
       </div>
 
-      <div v-else class="comment-text">{{ comment.text }}</div>
+      <div v-else class="comment-text">{{ comment?.text || '[Este comentario fue eliminado]' }}</div>
       
       <div v-if="!isEditing" class="comment-actions" style="display: flex; gap: 10px; margin-top: 6px;">
-        <button v-if="user" class="reply-btn" @click="emit('reply', postId, comment.id)">
+        <button v-if="user && !comment?.isDeleted" class="reply-btn" @click="emit('reply', postId, comment.id)">
           ↩ Responder
         </button>
 
-        <template v-if="user && comment.authorUid === user.uid">
+        <template v-if="user && comment?.authorUid && comment.authorUid === user.uid">
           <span style="color: var(--border)">|</span>
           <button @click="startEdit" style="background:none; border:none; color:#3498db; cursor:pointer; font-size:12px; padding:0;">
             ✏️ Editar
@@ -95,7 +97,7 @@ const saveEdit = () => {
     </div>
 
     <CommentNode
-      v-for="child in comment.children" 
+      v-for="child in comment?.children || []" 
       :key="child.id"
       :comment="child"
       :post-id="postId"
