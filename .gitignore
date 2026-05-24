@@ -1,4 +1,29 @@
-# Logs
+# ══════════════════════════════════════════════════════════════
+#  TUXTIMES .GITIGNORE
+# ══════════════════════════════════════════════════════════════
+
+# --- Dependencias del Sistema ---
+node_modules/
+jspm_packages/
+web_modules/
+
+# --- Compilación y Salidas (Builds) ---
+dist/
+dist-ssr/
+*.local
+out/
+build/
+
+# --- Firebase (Cachés, Deploys y CLI) ---
+.firebase/
+.firebaserc
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+functions/node_modules/
+
+# --- Logs de Errores y Sistema ---
 logs
 *.log
 npm-debug.log*
@@ -7,19 +32,41 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-.firebase/*
+# --- Variables de Entorno (¡Nunca subir llaves privadas!) ---
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
 
-# Editor directories and files
-.vscode/*
+# --- Directorios y Archivos de Editores (IDE / VS Code) ---
+.vscode/
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.classpath
+.project
+.settings/
+
+# --- Archivos Basura del Sistema Operativo ---
+.DS_Store
+.DS_Store?
+._*
+Thumbtack.db
+Thumbs.db
+desktop.ini
+
+# --- Pruebas / Cobertura ---
+coverage/
+*.lcov
+
+# --- Cachés de Herramientas ---
+.eslintcache
+.stylelintcache
+.vite-inspect/
+.nuxt/
+.cache/

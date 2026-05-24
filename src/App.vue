@@ -1491,26 +1491,15 @@ const deleteComment = async (postId, commentId) => {
             <div class="settings-avatar-section" style="flex-wrap: wrap; gap: 16px;">
               <div class="settings-avatar-wrap">
                 <img :src="settingsAvatarPreview||'/tux.png'" class="settings-avatar-big" alt="Avatar"/>
-                <label class="avatar-change-btn" title="Subir archivo local">
-                  📷<input type="file" accept="image/*" style="display:none" @change="onAvatarChange"/>
-                </label>
+                <!-- <label class="avatar-change-btn" title="Cambiar avatar"> -->
+                 <!-- 📷 <input type="file" accept="image/*" style="display:none" @change="onAvatarChange"/> -->
+                <!-- </label> -->
               </div>
               <div style="flex: 1; min-width: 200px;">
                 <div class="settings-real-name">{{ user?.displayName }}</div>
                 <div class="settings-email-dim">{{ user?.email }}</div>
-                <div class="settings-note">Haz clic en 📷 para subir un archivo local 🐧</div>
-              </div>
-
-              <div class="field-group" style="width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border);">
-                <label class="field-label" style="font-size: 0.8rem; margin-bottom: 4px;">🔗 O enlaza un avatar por URL externa</label>
-                <input 
-                  v-model="settingsAvatarPreview" 
-                  class="settings-input" 
-                  placeholder="https://ejemplo.com/tu-foto.png..." 
-                  style="font-size: 0.85rem; padding: 8px 12px;"
-                  @input="onAvatarUrlInput"
-                />
-                <small class="field-hint">Si pegas un enlace directo a una imagen, se renderizará automáticamente.</small>
+                <!-- comentado por que aun no funciona -->
+                <!-- div class="settings-note">Haz clic en 📷 para cambiar tu avatar 🐧 -->
               </div>
             </div>
 
