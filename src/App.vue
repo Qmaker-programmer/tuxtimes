@@ -1374,14 +1374,15 @@ const deleteComment = async (postId, commentId) => {
             <div class="settings-avatar-section">
               <div class="settings-avatar-wrap">
                 <img :src="settingsAvatarPreview||'/tux.png'" class="settings-avatar-big" alt="Avatar"/>
-                <label class="avatar-change-btn" title="Cambiar avatar">
-                  📷<input type="file" accept="image/*" style="display:none" @change="onAvatarChange"/>
-                </label>
+                <!-- <label class="avatar-change-btn" title="Cambiar avatar"> -->
+                 <!-- 📷 <input type="file" accept="image/*" style="display:none" @change="onAvatarChange"/> -->
+                <!-- </label> -->
               </div>
               <div>
                 <div class="settings-real-name">{{ user?.displayName }}</div>
                 <div class="settings-email-dim">{{ user?.email }}</div>
-                <div class="settings-note">Haz clic en 📷 para cambiar tu avatar 🐧</div>
+                <!-- comentado por que aun no funciona -->
+                <!-- div class="settings-note">Haz clic en 📷 para cambiar tu avatar 🐧 -->
               </div>
             </div>
 
