@@ -28,7 +28,7 @@ import {
 // (así que no hagas queries en bucles, por favor. ya lo hiciste. ya lo sabes.)
 import {
   collection, addDoc, getDocs, getDoc, doc, query, orderBy,
-  serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc
+  serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc, limit, startAfter
 } from 'firebase/firestore';
 
 // El componente de comentarios recursivo.
@@ -378,6 +378,10 @@ const posts = ref([]);
 // ── PAGINACIÓN ──────────────────────────────────────────────────
 const PAGE_SIZE   = 20;
 const currentPage = ref(1); // página actual (empieza en 1)
+const firstVisibleDoc = ref(null); // Guarda el primer documento de la página actual (para ir atrás)
+const lastVisibleDoc = ref(null);  // Guarda el último documento de la página actual (para ir adelante)
+const isLastPage = ref(false);     // Para saber si ya no hay más posts en la BD
+const pageCursors     = ref([]); // Guardará el primer documento de cada página [pág1_doc, pág2_doc, ...]
 
 // ── ORDENAMIENTO ─────────────────────────────────────────────────
 // 'fecha' → más nuevo primero (default)
@@ -389,9 +393,59 @@ const showSortMenu = ref(false);
 // Trae TODOS los posts de Firestore ordenados por fecha.
 // Nota: ese alguien soy yo — Qmaker. El futuro nosotros resolvió la paginación :)
 const fetchPosts = async () => {
-  const q    = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  posts.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // Si manejas alguna variable tipo 'loading', puedes activarla aquí:
+  // loading.value = true;
+  
+  try {
+    // 1. Construimos la query base según tu ordenamiento actual
+    let q;
+    if (sortBy.value === 'nombre') {
+      q = query(
+        collection(db, 'posts'),
+        orderBy('title', 'asc'),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      q = query(
+        collection(db, 'posts'),
+        orderBy('createdAt', 'desc')
+      );
+    }
+
+    // 2. Si no es la página 1, usamos el cursor guardado para ESTA página
+    if (currentPage.value > 1 && pageCursors.value[currentPage.value - 1]) {
+      q = query(q, startAt(pageCursors.value[currentPage.value - 1]), limit(PAGE_SIZE));
+    } else {
+      // Página 1: trae los primeros 20
+      q = query(q, limit(PAGE_SIZE));
+    }
+
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      isLastPage.value = true;
+      posts.value = [];
+      return;
+    }
+
+    // 3. Guardamos los documentos de los extremos
+    firstVisibleDoc.value = snap.docs[0];
+    lastVisibleDoc.value = snap.docs[snap.docs.length - 1];
+
+    // Guardamos este primer documento como el "cursor de inicio" para esta página exacta
+    pageCursors.value[currentPage.value - 1] = firstVisibleDoc.value;
+
+    // Si nos devolvió menos de 20, es que ya no hay más posts en el backend
+    isLastPage.value = snap.docs.length < PAGE_SIZE;
+
+    // 4. Asignamos los posts (ahora solo viajan 20 por la red)
+    posts.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  } catch (err) {
+    console.error("err: fallo al traer posts paginados:", err);
+  } finally {
+    // loading.value = false;
+  }
 };
 
 // Abrir post
@@ -523,16 +577,27 @@ const filteredPosts = computed(() => {
 // Resetear página al cambiar filtros o sort
 watch([searchQuery, activeCategories, sortBy], () => { currentPage.value = 1; });
 
-const goPage = (n) => {
-  currentPage.value = Math.max(1, Math.min(n, totalPages.value));
-  // scroll suave al top del feed
-  document.querySelector('.feed-section')?.scrollTo({ top: 0, behavior: 'smooth' });
+const goPage = async (n) => {
+  // Evitamos avanzar si ya estamos en la última página o retroceder de la 1
+  if (n < 1 || (isLastPage.value && n > currentPage.value)) return;
+  
+  currentPage.value = n;
+  isLastPage.value = false; // Reseteamos el flag para la nueva consulta
+  
+  await fetchPosts();
 };
 
 // ¿Hay algún filtro activo?
 const hasActiveFilters = computed(() =>
   searchQuery.value || activeCategories.value.length || activeTags.value.length
 );
+
+watch(sortBy, async () => {
+  currentPage.value = 1;
+  pageCursors.value = [];
+  isLastPage.value = false;
+  await fetchPosts();
+});
 
 // EASTER EGG
 const showWindowsEgg = ref(false);
@@ -1410,11 +1475,26 @@ const deleteComment = async (postId, commentId) => {
           </div>
 
           <!-- PAGINACIÓN — solo aparece si hay más de una página -->
-          <div v-if="view==='feed' && totalPages > 1" class="pagination-bar">
-            <button class="page-btn" :disabled="currentPage===1" @click="goPage(currentPage-1)">← Anterior</button>
-            <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-            <button class="page-btn" :disabled="currentPage===totalPages" @click="goPage(currentPage+1)">Siguiente →</button>
-          </div>
+		 <div v-if="view === 'feed' && (currentPage > 1 || !isLastPage)" class="pagination-bar">
+		  
+		   <button 
+		     class="page-btn" 
+		     :disabled="currentPage === 1" 
+		     @click="goPage(currentPage - 1)"
+ 		   >
+ 		     ← Anterior
+ 		   </button>
+		  
+		   <span class="page-info">Página {{ currentPage }}</span>
+		  
+		   <button 
+		     class="page-btn" 
+		     :disabled="isLastPage" 
+		     @click="goPage(currentPage + 1)"
+		   >
+		     Siguiente →
+		   </button>
+		 </div>
 
         </section>
 
