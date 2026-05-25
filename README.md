@@ -271,16 +271,28 @@ npm run dev
 
 ## 🤝 Contribuir
 
+**Como hacerlo**:
+
+* *Nota:* La base de datos en producciòn, esta hecha ESPECIFICAMENTE para produccion, no para probar.
+
+Si quieres aportar, tienes que ir a firebase, crear un proyecto, habilitar auntenticacion con Google y/o correo y contraseña,
+
+habilita Firestore (Si, es solo para probar, puedes dejar que cualquiera escriba o lea, en las rules),
+ 
+despues tienes que crear una nueva App web, despues usa las APIKeys que te dio, crea un archivo en src/firebase.js (puedes usar la plantilla de src/firebase.example.js) con tus APIKeys.
+
+**Despues de haber hecho eso**, ya puedes testear y experimentar con el proyecto, y cuando este listo:
+
 ```bash
+git clone https://github.com/Qmaker-programmer/tuxtimes.git
 git checkout -b feature/tu-mejora-epica
-git commit -m "feat: descripción que haría llorar de orgullo a Linus"
+git commit -m "feat: descripción"
 git push origin feature/tu-mejora-epica
 # Abre el PR → se testea → si funciona, se fusiona 🐧
 ```
 
 **Ideas bienvenidas:**
 - ✅ Tests unitarios para el Algoritmo de Poda de Fantasmas™
-- ✅ Notificaciones en tiempo real (Firestore `onSnapshot`)
 - ✅ PWA support para leer offline
 - ✅ Búsqueda full-text con TypeSense (el camino libre) o Algolia
 - ✅ Más easter eggs relacionados con Linux

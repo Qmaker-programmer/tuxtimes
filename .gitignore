@@ -22,6 +22,7 @@ firestore-debug.log
 ui-debug.log
 pubsub-debug.log
 functions/node_modules/
+src/firebase.js
 
 # --- Logs de Errores y Sistema ---
 logs
@@ -70,3 +71,4 @@ coverage/
 .vite-inspect/
 .nuxt/
 .cache/
+.jj/
