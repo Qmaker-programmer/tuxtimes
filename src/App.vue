@@ -103,36 +103,77 @@ const applyTheme = (t) => {
 // Se llama al montar y cada vez que el hash cambia (botón atrás/adelante).
 // Si el hash no existe en la tabla, asume que es un filtro de tag.
 // Si ni eso funciona, nos quedamos donde estamos. #yolo
-const applyHash = (hash) => {
-  if (!hash || hash === '#') { view.value = 'feed'; resetNav(); return; }
+const applyHash = async (hash) => {
+  if (!hash || hash === '#') { 
+    view.value = 'feed'; 
+    resetNav(); // 👈 Esto limpia los overlays y te deja en el feed limpio
+    return; 
+  }
   const lower = hash.toLowerCase();
 
-  // ¿Es una vista conocida? La aplicamos.
+  // ¿Es una vista conocida del sidebar?
   if (HASH_VIEWS[lower] !== undefined) {
     const target = HASH_VIEWS[lower];
-    if (target === 'signin') { showAuthModal.value = true; return; } // solo abre el modal
-    resetNav();
+    if (target === 'signin') { showAuthModal.value = true; return; }
+    resetNav(); // 👈 Limpia overlays para ver la sección del sidebar
     view.value = target;
     return;
   }
 
-  // ¿Es un post específico? Lo abrimos si existe en el array local.
-  // (si no está cargado aún, mala suerte. vuelve a intentarlo en 3 segundos.)
+  // ¿Es un post específico?
   if (lower.startsWith('#post-')) {
     const id = hash.slice(6);
     const p = posts.value.find(x => x.id === id);
-    if (p) { resetNav(); view.value = 'feed'; pushNav({ type: 'post', data: { ...p } }); return; }
+    if (p) { 
+      resetNav(); // 👈 Limpiamos overlays anteriores (por si saltas de un autor a un post directo)
+      view.value = 'feed'; 
+      pushNav({ type: 'post', data: { ...p } }); 
+      return; 
+    }
+  }
+
+  // 🐧 --- RUTA: Perfil de autor ---
+  if (lower.startsWith('#author-')) {
+    const authorUid = hash.slice(8);
+    const authorPostsList = posts.value.filter(p => p.authorUid === authorUid);
+    
+    let tempPhoto = '';
+    let tempName = 'Autor';
+    if (authorPostsList.length > 0) {
+      tempPhoto = authorPostsList[0].authorPhoto || '';
+      tempName = authorPostsList[0].author || 'Autor';
+    }
+
+    let profile = {
+      uid: authorUid, displayName: tempName, photoURL: tempPhoto,
+      bio: '', nickname: '', customUrl: '', hideEmail: true, hideName: false
+    };
+
+    try {
+      const snap = await getDoc(doc(db, 'profiles', authorUid));
+      if (snap.exists()) {
+        profile = { uid: authorUid, ...snap.data() };
+        if (!profile.photoURL) profile.photoURL = tempPhoto;
+      }
+    } catch (err) {
+      console.error("Error cargando perfil desde el hash:", err);
+    }
+
+    resetNav(); // 👈 CRUCIAL: Limpia el overlay anterior antes de meter el nuevo autor
+    view.value = 'feed'; 
+    pushNav({ type: 'author', data: { profile, posts: authorPostsList } });
+    return; 
   }
 
   // ¿Es un tag random? Filtra el feed con él.
-  // Ejemplo: #linux → busca posts con el tag "linux"
   const tag = hash.slice(1);
   if (tag) {
-    resetNav();
+    resetNav(); // 👈 Limpia overlays para que el usuario pueda ver el resultado del filtro en el feed
     view.value = 'feed';
     searchQuery.value = '#' + tag;
   }
 };
+
 
 // Sincroniza el hash de la URL cuando el usuario navega con el sidebar.
 // Usamos replaceState (no pushState) para no llenar el historial de basura.
@@ -234,11 +275,6 @@ onMounted(async () => {
     authError.value = 'Error al procesar el inicio de sesión 🐧';
   }
 
-// PASO 2: Escuchar cambios de autenticación EN TIEMPO REAL.
-  // onAuthStateChanged dispara inmediatamente con el estado actual,
-  // y luego cada vez que el usuario entra o sale.
-  // Aprovechamos esa primera llamada para cargar los posts Y aplicar el hash de la URL.
-  // (orden importa: primero posts, luego hash. #post-ID necesita los posts cargados.)
 // PASO 2: Escuchar cambios de autenticación EN TIEMPO REAL.
 onAuthStateChanged(auth, async (u) => {
   user.value = u;
@@ -456,8 +492,10 @@ const openPost = (post) => {
 };
 
 // Abrir perfil de autor
-const openAuthor = async (post, evt) => {
+const openAuthor = async (target, evt) => {
   evt?.stopPropagation();
+  const post = target.data ? target.data : target;
+
   let profile = {
     uid: post.authorUid || null, displayName: post.author,
     photoURL: post.authorPhoto || '', bio: '', nickname: '',
@@ -1756,6 +1794,8 @@ const deleteComment = async (postId, commentId) => {
                   @send="sendComment"
                   @edit="handleUpdateComment"
                   @delete="(postId, commentId, text) => handlePrepDeleteComment(postId, commentId, text)"
+                  
+                  @open-author="(commentData, event) => openAuthor(commentData, event)"
                 />
               </div>
             </div>
@@ -2177,7 +2217,8 @@ body[data-theme="light"],.shell[data-theme="light"]{ background:var(--bg); }
 .comment-bubble{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:6px}
 .comment-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .comment-avatar-sm{width:22px;height:22px;border-radius:50%;object-fit:cover}
-.comment-author{font-size:.78rem;font-weight:700;color:var(--text)}
+.comment-author {cursor: pointer;font-weight: 600;transition: color 0.15s ease;} 
+.comment-author:hover {color: #3498db; text-decoration: underline;}
 .comment-date{font-size:.68rem;color:var(--muted);margin-left:auto}
 .comment-text{font-size:.85rem;line-height:1.5;color:var(--text)}
 .reply-btn{margin-top:8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:.72rem;font-family:inherit;transition:color .15s;padding:0}

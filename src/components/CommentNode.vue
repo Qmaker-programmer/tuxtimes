@@ -12,7 +12,7 @@ const props = defineProps({
 })
 
 // Unificado: Usamos 'edit' para guardar el cambio y 'delete' para abrir el modal
-const emit = defineEmits(['reply', 'send', 'edit', 'delete'])
+const emit = defineEmits(['reply', 'send', 'edit', 'delete', 'open-author'])
 
 const isEditing = ref(false)
 const editText = ref(props.comment.text)
@@ -56,7 +56,7 @@ const saveEdit = () => {
         <img v-if="comment?.authorPhoto" :src="getAvatar(comment.authorPhoto)" class="comment-avatar-sm"/>
         <span v-else style="font-size:18px">🐧</span>
         
-        <span class="comment-author">{{ comment?.author || 'Pingüino Anónimo' }}</span>
+        <span class="comment-author" style="cursor: pointer;" @click="emit('open-author', comment, $event)"> {{ comment?.author || 'Pingüino Anónimo' }} </span>
         
         <span class="comment-date">
           {{ fmt(comment?.createdAt) }} 
@@ -110,6 +110,7 @@ const saveEdit = () => {
       @send="(pId, text, rId) => emit('send', pId, text, rId)"
       @edit="(pId, cId, txt) => emit('edit', pId, cId, txt)"
       @delete="(pId, cId, txt) => emit('delete', pId, cId, txt)"
+      @open-author="(commentData, ev) => emit('open-author', commentData, ev)" 
     />
   </div>
 </template>
