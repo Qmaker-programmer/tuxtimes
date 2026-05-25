@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ══════════════════════════════════════════════════════════════
+    //  HELPER FUNCTIONS
+    // ══════════════════════════════════════════════════════════════
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    function isCreatingOwnPost() {
+      return isAuth() && request.resource.data.authorUid == request.auth.uid;
+    }
+
+    function isPostOwner() {
+      return isAuth() && resource.data.authorUid == request.auth.uid;
+    }
+
+    function onlyStarsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stars']);
+    }
+
+    function validStarsUpdate() {
+      // Verifica que el usuario solo altere su propio voto en el array
+      return request.resource.data.stars.removeAll(resource.data.stars).hasOnly([request.auth.uid])
+        || resource.data.stars.removeAll(request.resource.data.stars).hasOnly([request.auth.uid]);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  PERFILES DE USUARIO
+    // ══════════════════════════════════════════════════════════════
+    match /profiles/{userId} {
+      allow read: if true;
+      allow create, update: if isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+            'uid', 'displayName', 'photoURL', 'nickname',
+            'bio', 'customUrl', 'hideEmail', 'hideName',
+            'avatarB64', 'avatarUrl', 'createdAt', 'updatedAt'
+          ]);
+      allow delete: if isOwner(userId);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  POSTS / TUXPOSTS
+    // ══════════════════════════════════════════════════════════════
+    match /posts/{postId} {
+      allow read: if true;
+
+      allow create: if isCreatingOwnPost()
+        && request.resource.data.keys().hasAll(['title', 'content', 'authorUid', 'author', 'createdAt'])
+        && request.resource.data.stars == []; // Más seguro y estricto que .size() == 0
+
+      allow update: if isPostOwner() 
+        || (isAuth() && onlyStarsChanged() && validStarsUpdate());
+
+      allow delete: if isPostOwner();
+
+      // ══════════════════════════════════════════════════════════
+      //  COMENTARIOS (subcolección)
+      // ══════════════════════════════════════════════════════════
+      match /comments/{commentId} {
+        allow read: if true;
+
+        allow create: if isAuth()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.text != null
+          && request.resource.data.text.trim().size() > 0;
+
+        allow update: if isAuth()
+          && (
+            // CASO 1: Edición normal (Eres el dueño)
+            (
+              resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorUid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+            ) 
+            || 
+            // CASO 2: Soft-delete (Eres el dueño transformándolo en fantasma)
+            (
+              resource.data.authorUid == request.auth.uid
+              && request.resource.data.isDeleted == true
+              && request.resource.data.authorUid == null
+              && request.resource.data.diff(resource.data).affectedKeys().hasAny(['text', 'isDeleted', 'author', 'authorUid', 'authorPhoto'])
+            )
+          );
+          
+        allow delete: if isAuth() && (
+          resource.data.authorUid == request.auth.uid || 
+          resource.data.isDeleted == true
+        );
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

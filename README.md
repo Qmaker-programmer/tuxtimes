@@ -195,6 +195,7 @@ tuxtimes/
 │   ├── tuxpc.gif            ← Tux en la PC (TuxPit)
 │   ├── github-cat.gif       ← El Octocat en la esquina del logo 🐱
 │   └── preview.png          ← Screenshot para este README
+├── firestore.rules
 └── package.json
 ```
 
@@ -245,110 +246,7 @@ npm run dev
 > ⚠️ **Para contribuidores:** usa tu propia clave de Firebase mientras desarrollas. No uses las llaves oficiales para no contaminar la BD de producción. Cuando tu PR esté listo, se probará con las llaves reales antes de fusionar.
 
 ### Reglas de Firestore (Que funcionan y testeadas)
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // ══════════════════════════════════════════════════════════════
-    //  HELPER FUNCTIONS
-    // ══════════════════════════════════════════════════════════════
-
-    function isAuth() {
-      return request.auth != null;
-    }
-
-    function isOwner(uid) {
-      return isAuth() && request.auth.uid == uid;
-    }
-
-    function isCreatingOwnPost() {
-      return isAuth() && request.resource.data.authorUid == request.auth.uid;
-    }
-
-    function isPostOwner() {
-      return isAuth() && resource.data.authorUid == request.auth.uid;
-    }
-
-    function onlyStarsChanged() {
-      return request.resource.data.keys().hasOnly(['stars']) 
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stars']);
-    }
-
-		// ══════════════════════════════════════════════════════════════
-    //  PERFILES DE USUARIO
-    // ══════════════════════════════════════════════════════════════
-    match /profiles/{userId} {
-      allow read: if true;
-      allow create, update: if isOwner(userId)
-        && request.resource.data.keys().hasOnly([
-            'uid', 'displayName', 'photoURL', 'nickname',
-            'bio', 'customUrl', 'hideEmail', 'hideName',
-            'avatarB64', 'avatarUrl', 'createdAt', 'updatedAt'
-          ]);
-      allow delete: if isOwner(userId);
-    }
-
-    // ══════════════════════════════════════════════════════════════
-    //  POSTS / TUXPOSTS
-    // ══════════════════════════════════════════════════════════════
-    match /posts/{postId} {
-      allow read: if true;
-
-      allow create: if isCreatingOwnPost()
-        && request.resource.data.keys().hasAll(['title', 'content', 'authorUid', 'author', 'createdAt'])
-        && request.resource.data.stars.size() == 0;
-
-      allow update: if isPostOwner() 
-        || (isAuth() && onlyStarsChanged());
-
-      allow delete: if isPostOwner();
-
-      // ══════════════════════════════════════════════════════════
-      //  COMENTARIOS (subcolección)
-      // ══════════════════════════════════════════════════════════
-      match /comments/{commentId} {
-        allow read: if true;
-
-        // Crear: Obligatorio estar logueado y que el autor coincida con tu UID
-        allow create: if isAuth()
-          && request.resource.data.authorUid == request.auth.uid
-          && request.resource.data.text != null
-          && request.resource.data.text.trim().size() > 0;
-
-        // Actualizar: El autor puede modificar su texto O realizar un soft-delete
-        allow update: if isAuth()
-          && resource.data.authorUid == request.auth.uid 
-          && (
-            // CASO 1: Edición normal de Markdown (se mantiene el UID)
-            (
-              request.resource.data.authorUid == request.auth.uid
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
-            ) 
-            || 
-            // CASO 2: Borrado lógico comunitario (El Pingüino pasa a null)
-            (
-              request.resource.data.isDeleted == true
-              && request.resource.data.authorUid == null
-              && request.resource.data.diff(resource.data).affectedKeys().hasAny(['text', 'isDeleted', 'author', 'authorUid', 'authorPhoto'])
-            )
-          );
-          
-        // 🔥 BORRAR CORREGIDO: Permite borrar si eres el dueño original O si el nodo ya es un residuo fantasma
-        allow delete: if isAuth() && (
-          resource.data.authorUid == request.auth.uid || 
-          resource.data.isDeleted == true
-        );
-      }
-    }
-
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-```
+**En `firestore.rules`**
 
 ---
 
