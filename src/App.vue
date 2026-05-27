@@ -21,14 +21,14 @@ import {
   onAuthStateChanged,                       // el vigilante silencioso que nunca duerme
   createUserWithEmailAndPassword,           // función con nombre más largo que la mayoría de contraseñas
   signInWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  GithubAuthProvider
 } from 'firebase/auth';
 
 // Firestore: la base de datos que cobra por cada query que hagas
 // (así que no hagas queries en bucles, por favor. ya lo hiciste. ya lo sabes.)
 import {
-  collection, addDoc, getDocs, getDoc, doc, query, orderBy,
-  serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc, limit, startAfter
+  collection, addDoc, getDocs, getDoc, doc, query, orderBy, serverTimestamp, updateDoc, deleteDoc, arrayUnion, arrayRemove, setDoc, limit, startAfter, where
 } from 'firebase/firestore';
 
 // El componente de comentarios recursivo.
@@ -194,9 +194,20 @@ const syncHashFromView = () => {
 
 // Watcher de vista → actualiza hash. Orden: resetNav primero, hash después.
 // (no al revés. lo aprendimos a las malas.)
-watch(view, (v) => {
-  if (v !== 'feed') resetNav();
+// Watcher de vista → actualiza hash y carga la BD de forma reactiva inteligente
+watch(view, async (newView) => {
+  if (newView !== 'feed') resetNav();
   syncHashFromView();
+  
+  // Si cambia de pestaña, gatillamos la query específica.
+  if (newView === 'myposts') {
+    await fetchMyPosts();
+  } else if (newView === 'favorites') {
+    await fetchFavoritePosts();
+  } else if (newView === 'feed') {
+    // Al volver al feed principal, re-aseguramos que cargue la página actual
+    await fetchPosts();
+  }
 });
 
 // ── BORRADOR PERSISTENTE DEL EDITOR ──────────────────────────────
@@ -444,8 +455,13 @@ const logout = () => { auth.signOut(); view.value = 'feed'; resetNav(); };
 // ══════════════════════════════════════════════════════════════════
 //  POSTS — el corazón palpitante de la aplicación.
 //  Sin posts no hay app. Solo un sidebar muy bonito y muy inútil.
+//  ESTADOS DE POSTS SEPARADOS (Adios al bug de los 20 posts)
 // ══════════════════════════════════════════════════════════════════
-const posts = ref([]);
+const posts = ref([]);         // El feed principal (Paginado de 20 en 20)
+const myPostsList = ref([]);   // Todos los posts del usuario (Traídos de Firestore)
+const favPostsList = ref([]);  // Todos los favoritos del usuario (Traídos de Firestore)
+
+const loadingSection = ref(false); // Por si quieres meter un spinner y no parecer arcaico
 
 // ── PAGINACIÓN ──────────────────────────────────────────────────
 const PAGE_SIZE   = 20;
@@ -521,6 +537,59 @@ const fetchPosts = async () => {
     // loading.value = false;
   }
 };
+
+// Trae exclusivamente los posts del usuario autenticado directamente de la BD
+const fetchMyPosts = async () => {
+  if (!user.value) return;
+  loadingSection.value = true;
+  try {
+    // Buscamos en toda la base de datos por el UID del autor
+    const q = query(
+      collection(db, 'posts'),
+      where('authorUid', '==', user.value.uid),
+      orderBy('createdAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    myPostsList.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.error("err: falló el fetch global de mis posts:", err);
+  } finally {
+    loadingSection.value = false;
+  }
+};
+
+// Trae exclusivamente los posts favoritos directamente de la BD
+const fetchFavoritePosts = async () => {
+  if (!user.value) return;
+  loadingSection.value = true;
+  try {
+    // Como los favoritos se guardan en un array 'stars' dentro del post,
+    // usamos array-contains para buscar el UID del usuario en toda la BD. ¡Eficiencia pura!
+    const q = query(
+      collection(db, 'posts'),
+      where('stars', 'array-contains', user.value.uid),
+      orderBy('createdAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    favPostsList.value = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.error("err: falló el fetch global de favoritos:", err);
+    
+    // BACKUP DE EMERGENCIA: Si no tienes configurado el índice compuesto en Firestore,
+    // tirará error. En ese caso, hacemos un fallback manual (por si acaso).
+    if (err.code === 'failed-precondition') {
+      console.warn("⚠️ Alerta: Te falta crear el índice en la consola de Firebase. Usando fallback local transitorio.");
+      // Un escaneo manual temporal para que no muera la app en desarrollo
+      const snapAll = await getDocs(query(collection(db, 'posts'), orderBy('createdAt', 'desc')));
+      favPostsList.value = snapAll.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(p => p.stars && p.stars.includes(user.value.uid));
+    }
+  } finally {
+    loadingSection.value = false;
+  }
+};
+
 
 // Abrir post
 const openPost = (post) => {
@@ -644,10 +713,10 @@ const applySortOrder = (list) => {
 
 // Posts filtrados + ordenados (sin paginar) — el total real
 const allFilteredPosts  = computed(() => applySortOrder(applyPostFilter(posts.value)));
-const favoritePosts     = computed(() => applySortOrder(applyPostFilter(posts.value.filter(p => hasStarred(p)))));
-const myPosts           = computed(() => applySortOrder(applyPostFilter(posts.value.filter(p =>
-  p.authorUid === user.value?.uid || p.author === user.value?.displayName
-))));
+
+// CAMBIO CRUCIAL: Ahora leen de las listas independientes que sí tienen todo
+const favoritePosts     = computed(() => applySortOrder(applyPostFilter(favPostsList.value)));
+const myPosts           = computed(() => applySortOrder(applyPostFilter(myPostsList.value)));
 
 // ── PAGINACIÓN aplicada al feed principal ────────────────────────
 const totalPages    = computed(() => Math.max(1, Math.ceil(allFilteredPosts.value.length / PAGE_SIZE)));
@@ -770,6 +839,7 @@ const confirmDeletePost = async () => {
     
     popNav();     // cierra el overlay si estaba abierto
     fetchPosts(); // refresca el feed
+    if (view.value === 'myposts') fetchMyPosts(); // 👈 ¡Añade esto para que desaparezca de tu vista local también!
     
   } catch (error) {
     console.error("Error crítico en la cascada de borrado del post:", error);
