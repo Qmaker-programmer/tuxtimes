@@ -83,7 +83,7 @@ const HASH_VIEWS = {
   '#signin':        'signin',  // especial: solo abre modal, no cambia vista
 };
 
-// Github
+
 
 // ══════════════════════════════════════════════════════════════════
 //  TEMA — dark | light | hc (high contrast)
@@ -467,7 +467,9 @@ const showSortMenu = ref(false);
 const fetchPosts = async () => {
   // Si manejas alguna variable tipo 'loading', puedes activarla aquí:
   // loading.value = true;
-  
+  if (currentPage.value === 1) {
+    isLastPage.value = false; 
+  }
   try {
     // 1. Construimos la query base según tu ordenamiento actual
     let q;
@@ -522,7 +524,13 @@ const fetchPosts = async () => {
 
 // Abrir post
 const openPost = (post) => {
-  history.pushState({ navLen: navStack.value.length + 1 }, '', `#post-${post.id}`);
+  const targetHash = `#post-${post.id}`;
+  
+  // 🚀 FIX: Si ya estamos en el hash de este post, no ensucies el historial
+  if (window.location.hash !== targetHash) {
+    history.pushState({ navLen: navStack.value.length + 1 }, '', targetHash);
+  }
+  
   pushNav({ type: 'post', data: { ...post } });
   view.value = 'feed';
 };
@@ -648,8 +656,54 @@ const filteredPosts = computed(() => {
   return allFilteredPosts.value.slice(start, start + PAGE_SIZE);
 });
 
-// Resetear página al cambiar filtros o sort
-watch([searchQuery, activeCategories, sortBy], () => { currentPage.value = 1; });
+// Escucha filtros de texto y categorías (Pág 1 automática)
+watch([searchQuery, activeCategories], () => { 
+  currentPage.value = 1; 
+  // Nota: si tus búsquedas son locales, aquí reevalúas, 
+  // pero si dependes de fetchPosts, llámalo aquí.
+});
+
+// Escucha EXCLUSIVAMENTE el cambio de ordenamiento
+watch(sortBy, async () => {
+  currentPage.value = 1;
+  pageCursors.value = [];
+  isLastPage.value = false; // Aseguramos reset total inmediato antes de la red
+  await fetchPosts();
+});
+
+// 🚀 FIX: Sincronizar el Hash del Navegador con la Barra de Historial Interna (Overlays)
+watch(currentNav, (newNav) => {
+  if (!newNav) return;
+
+  // Si volvimos a la base (el feed limpio)
+  if (newNav.type === 'feed') {
+    // Sincroniza con la pestaña activa del sidebar (ej: #reciente, #favoritos...)
+    syncHashFromView(); 
+    return;
+  }
+
+  // Si el historial interno se movió a un Post overlay
+  if (newNav.type === 'post' && newNav.data?.id) {
+    const targetHash = `#post-${newNav.data.id}`;
+    if (window.location.hash !== targetHash) {
+      // Usamos replaceState para que el historial interno maneje la lógica 
+      // y no dupliquemos entradas en el botón atrás del navegador nativo
+      history.replaceState(null, '', targetHash);
+    }
+  }
+
+  // Si el historial interno se movió a un Author overlay
+  if (newNav.type === 'author') {
+    const post = newNav.data?.profile || newNav.data;
+    const authorId = post?.uid || post?.authorUid || post?.author;
+    if (authorId) {
+      const targetHash = `#author-${authorId}`;
+      if (window.location.hash !== targetHash) {
+        history.replaceState(null, '', targetHash);
+      }
+    }
+  }
+}, { deep: true });
 
 const goPage = async (n) => {
   // Evitamos avanzar si ya estamos en la última página o retroceder de la 1
@@ -665,13 +719,6 @@ const goPage = async (n) => {
 const hasActiveFilters = computed(() =>
   searchQuery.value || activeCategories.value.length || activeTags.value.length
 );
-
-watch(sortBy, async () => {
-  currentPage.value = 1;
-  pageCursors.value = [];
-  isLastPage.value = false;
-  await fetchPosts();
-});
 
 // EASTER EGG
 const showWindowsEgg = ref(false);
@@ -1549,26 +1596,26 @@ const deleteComment = async (postId, commentId) => {
           </div>
 
           <!-- PAGINACIÓN — solo aparece si hay más de una página -->
-		 <div v-if="view === 'feed' && (currentPage > 1 || !isLastPage)" class="pagination-bar">
-		  
-		   <button 
-		     class="page-btn" 
-		     :disabled="currentPage === 1" 
-		     @click="goPage(currentPage - 1)"
- 		   >
- 		     ← Anterior
- 		   </button>
-		  
-		   <span class="page-info">Página {{ currentPage }}</span>
-		  
-		   <button 
-		     class="page-btn" 
-		     :disabled="isLastPage" 
-		     @click="goPage(currentPage + 1)"
-		   >
-		     Siguiente →
-		   </button>
-		 </div>
+          <div v-if="view === 'feed' && (currentPage > 1 || (!isLastPage && posts.length >= PAGE_SIZE))" class="pagination-bar">
+           
+            <button 
+              class="page-btn" 
+              :disabled="currentPage === 1" 
+              @click="goPage(currentPage - 1)"
+            >
+              ← Anterior
+            </button>
+           
+            <span class="page-info">Página {{ currentPage }}</span>
+           
+            <button 
+              class="page-btn" 
+              :disabled="isLastPage" 
+              @click="goPage(currentPage + 1)"
+            >
+              Siguiente →
+            </button>
+          </div>
 
         </section>
 
